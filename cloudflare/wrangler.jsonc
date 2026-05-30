@@ -25,8 +25,8 @@
     // Leave "" to accept any hostname (no origin checks possible).
     "SITE_DOMAIN": "",
     // "true"  = drop suspect traffic (bot UA / bad origin) at ingest.
-    // ""/"false" (default) = store it tagged so the dashboard can show & exclude it.
-    "STRICT_ORIGIN": ""
+    // "false" (default) = store it tagged so the dashboard can show & exclude it.
+    "STRICT_ORIGIN": "false"
   }
 
   // READ_TOKEN is a SECRET, not a var. Set it after deploy:

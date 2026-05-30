@@ -24,7 +24,34 @@ events (`window.sa('event', 'signup')`). See [PROTOCOL.md](PROTOCOL.md).
 
 ## Quick start — Cloudflare (recommended)
 
-> Replace `<...>` placeholders. Requires a free Cloudflare account.
+### One-click deploy
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/davettt/analytics-collector/tree/main/cloudflare)
+
+Clicking the button clones this repo into your own GitHub account and deploys the
+Worker to your own Cloudflare account. On the setup screen:
+
+- **D1 database** — leave **Create new**; it's auto-provisioned and the schema
+  migration runs automatically on deploy (`npm run deploy`).
+- **SITE_DOMAIN** — your site's hostname, e.g. `example.com` (enables spam filtering).
+- **STRICT_ORIGIN** — `false` (default) flags suspect traffic; `true` drops it.
+
+After it deploys:
+
+1. **Set the read token (secret):** Worker → Settings → Variables and Secrets → add a
+   **secret** named `READ_TOKEN` (a long random string). Read endpoints return `503`
+   until it's set. **Save this token** — your dashboard app needs it.
+2. **Put it on your own domain** so the snippet is first-party. Add a Worker
+   **Custom Domain** like `stats.example.com` (simplest), or a route `example.com/_a/*`
+   for same-origin. Then add the snippet to your pages:
+   ```html
+   <script defer src="https://stats.example.com/a.js" data-host="https://stats.example.com"></script>
+   ```
+
+> If you've restricted the Cloudflare GitHub App to "only select repositories," the
+> deploy will prompt you to let it create the new repo.
+
+### Manual deploy (alternative)
 
 ```bash
 cd cloudflare
@@ -34,17 +61,6 @@ npx wrangler d1 create analytics-collector-db   # paste the database_id into wra
 npm run deploy                                   # runs migrations + deploys
 npx wrangler secret put READ_TOKEN              # set a long random read token
 ```
-
-Then bind the Worker to a route on your own domain so the snippet is same-origin
-(e.g. `yoursite.com/_a/*` — uncomment `routes` in `wrangler.jsonc`), and add to
-your pages:
-
-```html
-<script defer src="https://yoursite.com/_a/a.js" data-host="https://yoursite.com/_a"></script>
-```
-
-A one-click **Deploy to Cloudflare** button (auto-provisions D1) will live here
-once the repo is pushed to GitHub.
 
 ## Quick start — shared hosting
 
@@ -85,5 +101,8 @@ separately) is the polished way to view one or many sites at once.
 
 ## Status
 
-v1 scaffold. Cloudflare variant is the primary target; PHP variant implements the
-same protocol. Not yet load-tested. MIT licensed.
+v1. The **Cloudflare variant is deployed and verified end-to-end** (one-click deploy,
+auto-provisioned D1, automatic migration, cookieless ingest, AI-channel classification,
+token-auth read API, and Origin-based spam flagging all confirmed working). The **PHP
+variant** implements the same protocol but is not yet field-tested. Not load-tested at
+scale. MIT licensed.
