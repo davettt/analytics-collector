@@ -1,0 +1,17 @@
+{
+  "name": "analytics-collector-cloudflare",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker + D1 variant of the owner-hosted analytics collector",
+  "scripts": {
+    "dev": "wrangler dev",
+    "migrate:local": "wrangler d1 migrations apply DB --local",
+    "migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250501.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^3.80.0"
+  }
+}

@@ -1,0 +1,17 @@
+# Routes /_a/event, /_a/stats, etc. to a.php so the same snippet works everywhere.
+# Apache / LiteSpeed (the common shared-hosting servers). nginx users: see php/README.md.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /_a/
+  # Pass the Authorization header through to PHP (some hosts strip it).
+  RewriteCond %{HTTP:Authorization} .
+  RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+  # Anything that isn't a real file → a.php
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^(event|stats|events|meta|a\.js)$ a.php [QSA,L]
+</IfModule>
+
+# Never serve the SQLite data file over HTTP.
+<FilesMatch "\.sqlite($|-wal$|-shm$)">
+  Require all denied
+</FilesMatch>

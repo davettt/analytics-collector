@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Cloudflare / Wrangler
+.wrangler/
+.dev.vars
+dist/
+
+# Local secrets
+*.local
+
+# SQLite data (PHP variant)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# OS / editor
+.DS_Store
+*.log

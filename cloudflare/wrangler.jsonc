@@ -1,0 +1,38 @@
+{
+  // analytics-collector — Cloudflare Worker + D1 config.
+  //
+  // Deploy to Cloudflare button: the D1 database below has NO `database_id`, so
+  // Cloudflare auto-provisions it on deploy and fills in the ID.
+  //
+  // Manual deploy: run `wrangler d1 create analytics-collector-db`, paste the
+  // returned `database_id` into the binding below, then `npm run deploy`.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "analytics-collector",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-05-01",
+  "observability": { "enabled": true },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "analytics-collector-db"
+      // "database_id": "<paste-after-wrangler-d1-create>"
+    }
+  ],
+
+  "vars": {
+    // Your site's hostname. Set this to enable Origin/Referer spam filtering.
+    // Leave "" to accept any hostname (no origin checks possible).
+    "SITE_DOMAIN": "",
+    // "true"  = drop suspect traffic (bot UA / bad origin) at ingest.
+    // ""/"false" (default) = store it tagged so the dashboard can show & exclude it.
+    "STRICT_ORIGIN": ""
+  }
+
+  // READ_TOKEN is a SECRET, not a var. Set it after deploy:
+  //   wrangler secret put READ_TOKEN
+  // (or Dashboard → Worker → Settings → Variables → Secret)
+  //
+  // Bind to your own domain so the snippet is same-origin, e.g. add a route:
+  //   "routes": [{ "pattern": "example.com/_a/*", "zone_name": "example.com" }]
+}
