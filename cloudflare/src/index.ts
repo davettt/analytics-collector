@@ -179,6 +179,10 @@ async function readStats(request: Request, env: Env, url: URL): Promise<Response
     `SELECT client_type, COUNT(DISTINCT visitor) AS visitors ${base} GROUP BY client_type ORDER BY visitors DESC`
   ).all()).results;
 
+  const countries = (await q(
+    `SELECT country, COUNT(DISTINCT visitor) AS visitors ${base} AND country IS NOT NULL GROUP BY country ORDER BY visitors DESC LIMIT 50`
+  ).all()).results;
+
   // 404s — events with name='404', counted separately regardless of the name filter.
   const notFoundBase = `FROM events WHERE ts >= ? AND ts < ?` + (includeFlagged ? "" : " AND flags IS NULL") + ` AND name = '404'`;
   const notFound = (await env.DB.prepare(
@@ -197,7 +201,7 @@ async function readStats(request: Request, env: Env, url: URL): Promise<Response
   return json({
     range: { from, to },
     totals: totals ?? { pageviews: 0, visitors: 0 },
-    timeseries, pages, referrers, channels, devices, clientTypes, notFound,
+    timeseries, pages, referrers, channels, devices, clientTypes, countries, notFound,
     flagged: { total: flaggedTotal?.n ?? 0, reasons: flaggedReasons, excluded: !includeFlagged }
   });
 }
