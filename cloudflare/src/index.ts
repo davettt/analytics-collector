@@ -67,19 +67,22 @@ async function ingest(request: Request, env: Env): Promise<Response> {
     const raw = await request.text();
     const ev = JSON.parse(raw) as { n?: string; d?: string; u?: string; r?: string | null; w?: number };
     if (!ev || !ev.d || !ev.u) return ok; // malformed → always dropped
-    if (env.SITE_DOMAIN && ev.d !== env.SITE_DOMAIN) return ok; // wrong site → always dropped
+    const evDomain = ev.d.replace(/^www\./, "");
+    const siteDomain = (env.SITE_DOMAIN || "").replace(/^www\./, "");
+    if (siteDomain && evDomain !== siteDomain) return ok; // wrong site → always dropped
 
     // Collect soft-suspicion flags. In strict mode any flag → drop; otherwise we
     // store the event tagged, so the dashboard can surface and exclude it.
     const flags: string[] = [];
     if (BOT_UA.test(ua)) flags.push("bot");
 
-    if (env.SITE_DOMAIN) {
+    if (siteDomain) {
       // Browsers attach Origin to every POST and it can't be spoofed from page JS
       // on another origin. curl/scripts usually send neither Origin nor Referer.
+      // hostnameOf already strips www., and siteDomain is also stripped above.
       const originHost = hostnameOf(request.headers.get("Origin")) || hostnameOf(request.headers.get("Referer"));
       if (!originHost) flags.push("no_origin");
-      else if (originHost !== env.SITE_DOMAIN) flags.push("origin_mismatch");
+      else if (originHost !== siteDomain) flags.push("origin_mismatch");
     }
 
     if (strict && flags.length) return ok; // drop, don't store

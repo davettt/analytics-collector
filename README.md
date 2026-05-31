@@ -37,27 +37,50 @@ data, tokens, and settings are preserved across updates.
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/davettt/analytics-collector/tree/main/cloudflare)
 
 Clicking the button clones this repo into your own GitHub account and deploys the
-Worker to your own Cloudflare account. On the setup screen:
+Worker to your own Cloudflare account. Requires a free Cloudflare account + a GitHub
+account.
 
-- **D1 database** — leave **Create new**; it's auto-provisioned and the schema
-  migration runs automatically on deploy (`npm run deploy`).
-- **SITE_DOMAIN** — your site's hostname, e.g. `example.com` (enables spam filtering).
-- **STRICT_ORIGIN** — `false` (default) flags suspect traffic; `true` drops it.
+#### Setup form — field by field
 
-After it deploys:
+| Field | What to do |
+|---|---|
+| **Git account** | Select your GitHub account. You may be prompted to grant the Cloudflare GitHub App access to create a repo. |
+| **Create private Git repository** | **Check this** — the repo is just your deployment copy; no reason to make it public. |
+| **Project name** | Give it a name like `mysite-analytics` (this becomes both the GitHub repo name and the Cloudflare Worker name). |
+| **Select D1 database** | Leave **+ Create new**. It's auto-provisioned. |
+| **Name your D1 Database** | Leave the default (`analytics-collector-db`) or rename to match your project. |
+| **Database location hint** | Leave **Automatic** (or pick a region near your visitors). |
+| **Enable read replication** | Leave **off** — not needed for this. |
+| **SITE_DOMAIN** | Enter your site's hostname, e.g. `example.com`. This enables Origin/Referer spam filtering. |
+| **STRICT_ORIGIN** | Enter `false`. This flags suspect traffic for review rather than dropping it silently. |
+| **Build command** | Leave **empty** — not needed. |
+| **Deploy command** | Should be pre-filled as `npm run deploy` — leave it. This runs database migrations and deploys the Worker. |
+| **Builds for non-production branches** | Either is fine — leave the default. |
 
-1. **Set the read token (secret):** Worker → Settings → Variables and Secrets → add a
-   **secret** named `READ_TOKEN` (a long random string). Read endpoints return `503`
-   until it's set. **Save this token** — your dashboard app needs it.
-2. **Put it on your own domain** so the snippet is first-party. Add a Worker
-   **Custom Domain** like `stats.example.com` (simplest), or a route `example.com/_a/*`
-   for same-origin. Then add the snippet to your pages:
+Click **Deploy** and wait for the build to complete.
+
+#### After it deploys
+
+1. **Set the read token:** Go to your Worker in the Cloudflare dashboard → **Settings
+   → Variables and Secrets** → add a **secret** named `READ_TOKEN`. Set it to a long
+   random string (e.g. run `openssl rand -hex 32` in your terminal). **Save this
+   token** — your dashboard app needs it, and Cloudflare won't show it again after
+   you save.
+2. **Put it on your own domain** so the snippet loads from a trusted address. Go to
+   your Worker → **Settings → Domains & Routes** → **Add → Custom Domain** → enter a
+   subdomain like `stats.example.com`. Cloudflare creates the DNS record and TLS
+   certificate automatically.
+3. **Add the snippet to your site** — paste this into your site's shared footer or
+   template (before `</body>`), replacing the domain with yours:
    ```html
    <script defer src="https://stats.example.com/a.js" data-host="https://stats.example.com"></script>
    ```
+   No other changes to your site are needed. The snippet is cookieless, loads
+   asynchronously, and auto-detects 404 pages.
 
-> If you've restricted the Cloudflare GitHub App to "only select repositories," the
-> deploy will prompt you to let it create the new repo.
+> **GitHub App permissions:** if you've restricted the Cloudflare GitHub App to "only
+> select repositories," the deploy will prompt you to let it create the new repo. You
+> can scope it back afterward.
 
 ### Manual deploy (alternative)
 

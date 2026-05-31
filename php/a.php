@@ -73,15 +73,17 @@ function ingest() {
 
         $ev = json_decode(file_get_contents('php://input'), true);
         if (!$ev || empty($ev['d']) || !isset($ev['u'])) return;
-        if (SITE_DOMAIN !== '' && $ev['d'] !== SITE_DOMAIN) return;
+        $evDomain = preg_replace('/^www\./', '', $ev['d']);
+        $siteDomain = preg_replace('/^www\./', '', SITE_DOMAIN);
+        if ($siteDomain !== '' && $evDomain !== $siteDomain) return;
 
         $flags = [];
         if (preg_match('/bot|crawl|spider|slurp|headless|preview|monitor|lighthouse|pingdom|gtmetrix|curl|wget|python-requests|python-urllib|go-http-client|okhttp|java\/|libwww|httpie|postman|insomnia|node-fetch|axios|undici/i', $ua)) $flags[] = 'bot';
 
-        if (SITE_DOMAIN !== '') {
+        if ($siteDomain !== '') {
             $originHost = hostname_of($_SERVER['HTTP_ORIGIN'] ?? null) ?: hostname_of($_SERVER['HTTP_REFERER'] ?? null);
             if (!$originHost) $flags[] = 'no_origin';
-            elseif ($originHost !== SITE_DOMAIN) $flags[] = 'origin_mismatch';
+            elseif ($originHost !== $siteDomain) $flags[] = 'origin_mismatch';
         }
 
         if (STRICT_ORIGIN && $flags) return;
