@@ -23,7 +23,9 @@
 (function () {
   var script = document.currentScript;
   var host = (script && script.getAttribute("data-host")) || "";
-  var is404 = /\b404\b|not found/i.test(document.title || "");
+  // Detect 404 error pages — title starts with "404" or starts with "page not found" / "not found".
+  // Won't false-positive on blog posts like "How to fix 404 errors".
+  var is404 = /^404\b|^(page )?not found/i.test((document.title || "").trim());
   var defaultName = window.__tc_event || (script && script.getAttribute("data-event")) || (is404 ? "404" : "pageview");
   var ownHost = location.hostname;
 
