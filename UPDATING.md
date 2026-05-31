@@ -19,20 +19,23 @@ Inside the unzipped folder you'll see several subfolders (`cloudflare/`, `php/`,
 `snippet/`, etc.). Open the **`cloudflare/`** folder — the files inside it are what
 your repo contains.
 
-> **Important:** upload the *contents* of `cloudflare/` (the files and folders inside
-> it), not the `cloudflare/` folder itself. Your repo's root should have `src/`,
-> `migrations/`, `package.json`, etc. directly — not nested inside a `cloudflare/`
-> subfolder.
-
 ### 3. Upload to your repo
 
 - Go to **your** repository on GitHub (the one Cloudflare created when you deployed).
 - Click **Add file → Upload files**.
-- Drag and drop everything from inside the `cloudflare/` folder (i.e. `src/`,
-  `migrations/`, `package.json`, `tsconfig.json`, `wrangler.jsonc`) into the upload
-  area. Files with the same name are replaced automatically.
+- From inside the `cloudflare/` folder, drag and drop **only these**:
+  - The **`src/`** folder
+  - The **`migrations/`** folder
+  - **`package.json`**
+  - **`tsconfig.json`**
 - Write a commit message (e.g. "Update collector to latest version") and click
   **Commit changes**.
+
+> **Do NOT upload `wrangler.jsonc`** — your copy contains your database ID and
+> settings (SITE_DOMAIN, etc.) that were filled in when you first deployed.
+> Overwriting it with the source version will break your deploy. If you do
+> accidentally overwrite it, edit it on GitHub and re-add your `database_id`
+> (find it in Cloudflare → D1 → your database).
 
 ### 4. That's it
 
@@ -58,9 +61,9 @@ directly into your repo:
 ```bash
 cd YOUR-REPO-NAME
 
-# Download the latest cloudflare/ contents as an archive, extract into your repo root
+# Download the latest cloudflare/ contents, excluding wrangler.jsonc (which has YOUR database ID)
 curl -sL https://github.com/davettt/analytics-collector/archive/refs/heads/main.tar.gz \
-  | tar -xz --strip-components=2 analytics-collector-main/cloudflare/
+  | tar -xz --strip-components=2 --exclude='wrangler.jsonc' analytics-collector-main/cloudflare/
 
 # Commit and push — auto-deploys
 git add -A
@@ -69,8 +72,8 @@ git push
 ```
 
 > Your deploy repo contains the *contents* of `cloudflare/` at its root — not the
-> full source repo. The command above extracts only that subfolder, so your repo
-> structure stays correct.
+> full source repo. The command above extracts only that subfolder and skips
+> `wrangler.jsonc` (which contains your database ID and settings).
 
 ---
 
