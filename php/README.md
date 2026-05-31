@@ -24,6 +24,19 @@ nginx doesn't read `.htaccess`. Either:
   `data-host="https://yoursite.com/_a/a.php?e"` is **not** supported by the shared
   snippet — instead add a tiny nginx rewrite, or use the Cloudflare variant.
 
+## Updating
+
+1. Download the latest `a.php` from the `php/` folder in the
+   [source repo](https://github.com/davettt/analytics-collector).
+2. Upload it to the same location on your hosting, replacing the old file.
+3. **Re-enter your `READ_TOKEN` and `SITE_DOMAIN`** at the top of the new file (the
+   download ships with placeholder values).
+
+That's it. The new `a.php` automatically adds any missing database columns on the
+first request — your existing data is preserved. The tracking snippet is served by
+the script itself, so your site picks up the updated snippet automatically (no HTML
+changes needed).
+
 ## Notes & limits
 
 - **Requires PHP 7.4+ with PDO SQLite** (standard on virtually all PHP hosts).

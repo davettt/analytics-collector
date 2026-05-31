@@ -18,9 +18,17 @@ token-authenticated API.
 
 ## What it captures
 
-Pageviews, unique visitors, referrers (with an **AI-assistant channel** —
-ChatGPT, Claude, Perplexity, Gemini…), UTM campaigns, device class, and custom
+Pageviews, unique visitors, referrers with **referring pages**, an **AI-assistant
+channel** (ChatGPT, Claude, Perplexity, Gemini…), UTM campaigns, device class,
+**client type** (human / bot / crawler — classified without storing the raw
+User-Agent), **automatic 404 detection** (broken-link visibility), and custom
 events (`window.sa('event', 'signup')`). See [PROTOCOL.md](PROTOCOL.md).
+
+## Updating your collector
+
+See [UPDATING.md](UPDATING.md) — download the latest ZIP, upload the folders to
+your repo via GitHub's web UI (drag and drop), commit. No terminal needed. Your
+data, tokens, and settings are preserved across updates.
 
 ## Quick start — Cloudflare (recommended)
 
@@ -101,8 +109,9 @@ separately) is the polished way to view one or many sites at once.
 
 ## Status
 
-v1. The **Cloudflare variant is deployed and verified end-to-end** (one-click deploy,
-auto-provisioned D1, automatic migration, cookieless ingest, AI-channel classification,
-token-auth read API, and Origin-based spam flagging all confirmed working). The **PHP
-variant** implements the same protocol but is not yet field-tested. Not load-tested at
-scale. MIT licensed.
+**v2** (protocol version 2). The **Cloudflare variant is deployed and verified
+end-to-end** — one-click deploy, auto-provisioned D1, automatic migrations,
+cookieless ingest, AI-channel classification, client-type classification, auto-404
+detection, referring-page capture, token-auth read API with cross-filters, and
+Origin-based spam flagging. The **PHP variant** implements the same protocol but is
+not yet updated to v2. Not load-tested at scale. MIT licensed.

@@ -1,6 +1,6 @@
 <?php
 /**
- * analytics-collector — PHP + SQLite variant (v1)
+ * analytics-collector — PHP + SQLite variant (v2)
  *
  * For traditional shared hosting (cPanel / self-hosted WordPress hosts).
  * Drop this file + the included .htaccess into a folder on your site, e.g. /_a/,
@@ -16,7 +16,7 @@ const READ_TOKEN = 'CHANGE-ME-to-a-long-random-string'; // dashboard read token
 const SITE_DOMAIN = '';                                  // your hostname; '' = accept any (disables origin checks)
 const STRICT_ORIGIN = false;                             // true = drop suspect traffic; false = store + flag it
 const DB_FILE = __DIR__ . '/analytics.sqlite';           // created automatically
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 // ----------------------------------------------------------------------------
 
 $AI_HOSTS     = ['chatgpt.com','chat.openai.com','claude.ai','perplexity.ai','gemini.google.com','copilot.microsoft.com','deepseek.com','grok.com','x.ai','you.com','poe.com'];
@@ -24,7 +24,7 @@ $SEARCH_HOSTS = ['google.','bing.com','duckduckgo.com','ecosia.org','search.brav
 $SOCIAL_HOSTS = ['facebook.com','instagram.com','t.co','twitter.com','x.com','linkedin.com','reddit.com','youtube.com','news.ycombinator.com','mastodon','bsky.app','pinterest.','tiktok.com'];
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
-$ep = isset($_GET['e']) ? $_GET['e'] : route_suffix($path); // path style, or ?e= fallback
+$ep = isset($_GET['e']) ? $_GET['e'] : route_suffix($path);
 
 switch ($ep) {
     case 'a.js':  serve_snippet(); break;
@@ -54,28 +54,29 @@ function db() {
     $pdo->exec('CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL, name TEXT NOT NULL,
         domain TEXT NOT NULL, path TEXT NOT NULL, visitor TEXT NOT NULL, ref_host TEXT,
-        channel TEXT, utm_source TEXT, utm_medium TEXT, utm_campaign TEXT, device TEXT,
-        country TEXT, flags TEXT)');
+        ref_path TEXT, channel TEXT, utm_source TEXT, utm_medium TEXT, utm_campaign TEXT,
+        device TEXT, country TEXT, client_type TEXT DEFAULT \'human\', flags TEXT)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts)');
     $pdo->exec('CREATE INDEX IF NOT EXISTS idx_events_visitor ON events (visitor)');
     $pdo->exec('CREATE TABLE IF NOT EXISTS salts (day TEXT PRIMARY KEY, salt TEXT NOT NULL)');
+    // Auto-migrate v1 → v2: add columns if missing.
+    try { $pdo->exec('ALTER TABLE events ADD COLUMN ref_path TEXT'); } catch (Throwable $e) {}
+    try { $pdo->exec("ALTER TABLE events ADD COLUMN client_type TEXT DEFAULT 'human'"); } catch (Throwable $e) {}
     return $pdo;
 }
 
 function ingest() {
-    http_response_code(202); // always 202
+    http_response_code(202);
     header('Access-Control-Allow-Origin: *');
     try {
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
         $ev = json_decode(file_get_contents('php://input'), true);
-        if (!$ev || empty($ev['d']) || !isset($ev['u'])) return;          // malformed → always dropped
-        if (SITE_DOMAIN !== '' && $ev['d'] !== SITE_DOMAIN) return;        // wrong site → always dropped
+        if (!$ev || empty($ev['d']) || !isset($ev['u'])) return;
+        if (SITE_DOMAIN !== '' && $ev['d'] !== SITE_DOMAIN) return;
 
-        // Collect soft-suspicion flags. Strict mode drops them; otherwise we store
-        // the event tagged so the dashboard can surface and exclude it.
         $flags = [];
-        if (preg_match('/bot|crawl|spider|slurp|headless|preview|monitor|lighthouse|pingdom|gtmetrix/i', $ua)) $flags[] = 'bot';
+        if (preg_match('/bot|crawl|spider|slurp|headless|preview|monitor|lighthouse|pingdom|gtmetrix|curl|wget|python-requests|python-urllib|go-http-client|okhttp|java\/|libwww|httpie|postman|insomnia|node-fetch|axios|undici/i', $ua)) $flags[] = 'bot';
 
         if (SITE_DOMAIN !== '') {
             $originHost = hostname_of($_SERVER['HTTP_ORIGIN'] ?? null) ?: hostname_of($_SERVER['HTTP_REFERER'] ?? null);
@@ -83,18 +84,20 @@ function ingest() {
             elseif ($originHost !== SITE_DOMAIN) $flags[] = 'origin_mismatch';
         }
 
-        if (STRICT_ORIGIN && $flags) return;                              // drop, don't store
+        if (STRICT_ORIGIN && $flags) return;
         $flagStr = $flags ? implode(',', $flags) : null;
 
         $ip = $_SERVER['REMOTE_ADDR'] ?? '';
         $salt = daily_salt();
         $visitor = hash('sha256', $salt . $ev['d'] . $ip . $ua);
         $refHost = hostname_of($ev['r'] ?? null);
+        $refPath = path_of($ev['r'] ?? null);
+        $clientType = classify_client($ua);
         $utm = parse_utm($ev['u']);
 
         $stmt = db()->prepare('INSERT INTO events
-            (ts, name, domain, path, visitor, ref_host, channel, utm_source, utm_medium, utm_campaign, device, country, flags)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            (ts, name, domain, path, visitor, ref_host, ref_path, channel, utm_source, utm_medium, utm_campaign, device, country, client_type, flags)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
         $stmt->execute([
             (int)(microtime(true) * 1000),
             substr($ev['n'] ?? 'pageview', 0, 80),
@@ -102,10 +105,12 @@ function ingest() {
             substr($ev['u'], 0, 1024),
             $visitor,
             $refHost,
+            $refPath,
             classify($refHost),
             $utm['source'], $utm['medium'], $utm['campaign'],
             device_class((int)($ev['w'] ?? 0)),
-            null, // country: not resolved on shared hosting without GeoIP
+            null,
+            $clientType,
             $flagStr
         ]);
     } catch (Throwable $e) { /* swallow */ }
@@ -117,26 +122,40 @@ function read_stats() {
     list($from, $to, $fromTs, $toTs) = [$r['from'], $r['to'], $r['fromTs'], $r['toTs']];
     $pdo = db();
 
-    // Clean reports by default: exclude flagged (likely bot/spam) traffic.
-    // Pass ?include_flagged=1 to include it.
     $includeFlagged = ($_GET['include_flagged'] ?? '') === '1';
-    $f = $includeFlagged ? '' : ' AND flags IS NULL';
+    $channelFilter = $_GET['channel'] ?? null;
+    $clientTypeFilter = $_GET['client_type'] ?? null;
+    $deviceFilter = $_GET['device'] ?? null;
+    $nameFilter = $_GET['name'] ?? 'pageview';
 
-    $totals = $pdo->prepare("SELECT COUNT(*) pageviews, COUNT(DISTINCT visitor) visitors FROM events WHERE ts>=? AND ts<? AND name='pageview'" . $f);
-    $totals->execute([$fromTs, $toTs]);
-    $flaggedTotal = $pdo->prepare("SELECT COUNT(*) n FROM events WHERE ts>=? AND ts<? AND flags IS NOT NULL");
-    $flaggedTotal->execute([$fromTs, $toTs]);
+    $f = '';
+    $extras = [];
+    if (!$includeFlagged) $f .= ' AND flags IS NULL';
+    if ($channelFilter) { $f .= ' AND channel = ?'; $extras[] = $channelFilter; }
+    if ($nameFilter !== 'all') { $f .= ' AND name = ?'; $extras[] = $nameFilter; }
+    if ($clientTypeFilter) { $f .= ' AND client_type = ?'; $extras[] = $clientTypeFilter; }
+    if ($deviceFilter) { $f .= ' AND device = ?'; $extras[] = $deviceFilter; }
+
+    $base = "FROM events WHERE ts>=? AND ts<?" . $f;
+    $baseParams = array_merge([$fromTs, $toTs], $extras);
+
+    $totals = qf($pdo, "SELECT COUNT(*) pageviews, COUNT(DISTINCT visitor) visitors $base", $baseParams);
+    $flaggedTotal = qf($pdo, "SELECT COUNT(*) n FROM events WHERE ts>=? AND ts<? AND flags IS NOT NULL", [$fromTs, $toTs]);
+
+    $notFoundBase = "FROM events WHERE ts>=? AND ts<?" . ($includeFlagged ? '' : ' AND flags IS NULL') . " AND name='404'";
 
     send_json([
         'range' => ['from' => $from, 'to' => $to],
-        'totals' => $totals->fetch(PDO::FETCH_ASSOC) ?: ['pageviews' => 0, 'visitors' => 0],
-        'timeseries' => q($pdo, "SELECT date(ts/1000,'unixepoch') day, COUNT(*) pageviews, COUNT(DISTINCT visitor) visitors FROM events WHERE ts>=? AND ts<? AND name='pageview'" . $f . " GROUP BY day ORDER BY day", [$fromTs, $toTs]),
-        'pages' => q($pdo, "SELECT path, COUNT(*) pageviews, COUNT(DISTINCT visitor) visitors FROM events WHERE ts>=? AND ts<? AND name='pageview'" . $f . " GROUP BY path ORDER BY pageviews DESC LIMIT 100", [$fromTs, $toTs]),
-        'referrers' => q($pdo, "SELECT ref_host, COUNT(DISTINCT visitor) visitors FROM events WHERE ts>=? AND ts<? AND ref_host IS NOT NULL" . $f . " GROUP BY ref_host ORDER BY visitors DESC LIMIT 100", [$fromTs, $toTs]),
-        'channels' => q($pdo, "SELECT channel, COUNT(DISTINCT visitor) visitors FROM events WHERE ts>=? AND ts<?" . $f . " GROUP BY channel ORDER BY visitors DESC", [$fromTs, $toTs]),
-        'devices' => q($pdo, "SELECT device, COUNT(DISTINCT visitor) visitors FROM events WHERE ts>=? AND ts<?" . $f . " GROUP BY device ORDER BY visitors DESC", [$fromTs, $toTs]),
+        'totals' => $totals ?: ['pageviews' => 0, 'visitors' => 0],
+        'timeseries' => q($pdo, "SELECT date(ts/1000,'unixepoch') day, COUNT(*) pageviews, COUNT(DISTINCT visitor) visitors $base GROUP BY day ORDER BY day", $baseParams),
+        'pages' => q($pdo, "SELECT path, COUNT(*) pageviews, COUNT(DISTINCT visitor) visitors $base GROUP BY path ORDER BY pageviews DESC LIMIT 100", $baseParams),
+        'referrers' => q($pdo, "SELECT ref_host, ref_path, COUNT(DISTINCT visitor) visitors $base AND ref_host IS NOT NULL GROUP BY ref_host, ref_path ORDER BY visitors DESC LIMIT 100", $baseParams),
+        'channels' => q($pdo, "SELECT channel, COUNT(DISTINCT visitor) visitors $base GROUP BY channel ORDER BY visitors DESC", $baseParams),
+        'devices' => q($pdo, "SELECT device, COUNT(DISTINCT visitor) visitors $base GROUP BY device ORDER BY visitors DESC", $baseParams),
+        'clientTypes' => q($pdo, "SELECT client_type, COUNT(DISTINCT visitor) visitors $base GROUP BY client_type ORDER BY visitors DESC", $baseParams),
+        'notFound' => q($pdo, "SELECT path, ref_host, ref_path, COUNT(*) count $notFoundBase GROUP BY path, ref_host, ref_path ORDER BY count DESC LIMIT 100", [$fromTs, $toTs]),
         'flagged' => [
-            'total' => (int)($flaggedTotal->fetchColumn() ?: 0),
+            'total' => (int)($flaggedTotal['n'] ?? 0),
             'reasons' => q($pdo, "SELECT flags, COUNT(*) count FROM events WHERE ts>=? AND ts<? AND flags IS NOT NULL GROUP BY flags ORDER BY count DESC", [$fromTs, $toTs]),
             'excluded' => !$includeFlagged,
         ],
@@ -145,9 +164,17 @@ function read_stats() {
 
 function read_raw() {
     require_token();
+    $r = date_range();
+    $fromTs = $r['fromTs']; $toTs = $r['toTs'];
     $since = max(0, (int)($_GET['since'] ?? 0));
     $limit = min(1000, max(1, (int)($_GET['limit'] ?? 500)));
-    $rows = q(db(), 'SELECT * FROM events WHERE id > ? ORDER BY id ASC LIMIT ?', [$since, $limit]);
+    $includeFlagged = ($_GET['include_flagged'] ?? '') === '1';
+
+    $where = 'ts >= ? AND ts < ? AND id > ?';
+    $params = [$fromTs, $toTs, $since];
+    if (!$includeFlagged) $where .= ' AND flags IS NULL';
+
+    $rows = q(db(), "SELECT * FROM events WHERE $where ORDER BY id ASC LIMIT ?", array_merge($params, [$limit]));
     $next = count($rows) === $limit ? $rows[count($rows) - 1]['id'] : null;
     send_json(['events' => $rows, 'next' => $next]);
 }
@@ -180,6 +207,11 @@ function hostname_of($ref) {
     return $h ? preg_replace('/^www\./', '', $h) : null;
 }
 
+function path_of($ref) {
+    if (!$ref) return null;
+    return parse_url($ref, PHP_URL_PATH) ?: null;
+}
+
 function classify($h) {
     global $AI_HOSTS, $SEARCH_HOSTS, $SOCIAL_HOSTS;
     if (!$h) return 'direct';
@@ -188,6 +220,14 @@ function classify($h) {
     foreach ($SEARCH_HOSTS as $x) if (strpos($h, $x) !== false) return 'search';
     foreach ($SOCIAL_HOSTS as $x) if (strpos($h, $x) !== false) return 'social';
     return 'referral';
+}
+
+function classify_client($ua) {
+    if (preg_match('/gptbot|chatgpt|claudebot|anthropic|perplexitybot|bytespider|cohere-ai|meta-externalagent/i', $ua)) return 'ai_crawler';
+    if (preg_match('/googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|sogou/i', $ua)) return 'search_crawler';
+    if (preg_match('/curl|wget|python-requests|python-urllib|go-http-client|okhttp|java\/|libwww|httpie|postman|insomnia|node-fetch|axios|undici/i', $ua)) return 'http_client';
+    if (preg_match('/headless|phantomjs|selenium|puppeteer|playwright/i', $ua)) return 'headless';
+    return 'human';
 }
 
 function device_class($w) {
@@ -216,6 +256,12 @@ function q($pdo, $sql, $params) {
     return $s->fetchAll(PDO::FETCH_ASSOC);
 }
 
+function qf($pdo, $sql, $params) {
+    $s = $pdo->prepare($sql);
+    $s->execute($params);
+    return $s->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
 function send_json($obj, $status = 200) {
     http_response_code($status);
     header('Content-Type: application/json');
@@ -227,6 +273,6 @@ function send_json($obj, $status = 200) {
 function serve_snippet() {
     header('Content-Type: text/javascript; charset=utf-8');
     header('Cache-Control: public, max-age=86400');
-    echo '(function(){var s=document.currentScript;var host=(s&&s.getAttribute("data-host"))||"";function send(n){try{var b=JSON.stringify({n:n,d:location.hostname,u:location.pathname+location.search,r:document.referrer||null,w:window.innerWidth||0});var u=host+"/event";if(navigator.sendBeacon){navigator.sendBeacon(u,new Blob([b],{type:"text/plain"}))}else{fetch(u,{method:"POST",body:b,keepalive:true,headers:{"Content-Type":"text/plain"}})}}catch(e){}}send("pageview");var p=history.pushState;history.pushState=function(){p.apply(this,arguments);send("pageview")};window.addEventListener("popstate",function(){send("pageview")});window.sa=function(t,n){if(t==="event"&&n)send(n)}})();';
+    echo '(function(){var s=document.currentScript;var host=(s&&s.getAttribute("data-host"))||"";var is404=/\b404\b|not found/i.test(document.title||"");var dn=window.__tc_event||(s&&s.getAttribute("data-event"))||(is404?"404":"pageview");function send(n){try{var b=JSON.stringify({n:n,d:location.hostname,u:location.pathname+location.search,r:document.referrer||null,w:window.innerWidth||0});var u=host+"/event";if(navigator.sendBeacon){navigator.sendBeacon(u,new Blob([b],{type:"text/plain"}))}else{fetch(u,{method:"POST",body:b,keepalive:true,headers:{"Content-Type":"text/plain"}})}}catch(e){}}send(dn);var p=history.pushState;history.pushState=function(){p.apply(this,arguments);send("pageview")};window.addEventListener("popstate",function(){send("pageview")});window.sa=function(t,n){if(t==="event"&&n)send(n)}})();';
     exit;
 }

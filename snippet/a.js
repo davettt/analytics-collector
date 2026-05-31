@@ -1,16 +1,26 @@
 /*!
- * analytics-collector tracking snippet (v1)
+ * analytics-collector tracking snippet (v2)
  * Cookieless. ~1KB. Sends pageviews + custom events to a same-origin collector.
  *
  * Install:
  *   <script defer src="https://example.com/_a/a.js" data-host="https://example.com/_a"></script>
  *
  * `data-host` is the collector base path. Same-origin (e.g. "/_a") is ideal —
- * no CORS, no third-party-cookie blocking. Custom events: window.sa('event', 'signup').
+ * no CORS, no third-party-cookie blocking.
+ *
+ * Options:
+ *   data-event="404"  Override the default event name. Use on 404 pages to tag
+ *                     them as not-found hits (filterable in the dashboard).
+ *
+ * Custom events: window.sa('event', 'signup')
  */
 (function () {
   var script = document.currentScript;
   var host = (script && script.getAttribute("data-host")) || "";
+  // Auto-detect 404 pages from the document title (covers most CMSes/frameworks).
+  // Explicit overrides: window.__tc_event or data-event attribute on the script tag.
+  var is404 = /\b404\b|not found/i.test(document.title || "");
+  var defaultName = window.__tc_event || (script && script.getAttribute("data-event")) || (is404 ? "404" : "pageview");
 
   function send(name) {
     try {
@@ -38,9 +48,9 @@
     }
   }
 
-  send("pageview");
+  send(defaultName);
 
-  // SPA route changes
+  // SPA route changes — always "pageview" (only the initial load uses the override)
   var _push = history.pushState;
   history.pushState = function () {
     _push.apply(this, arguments);

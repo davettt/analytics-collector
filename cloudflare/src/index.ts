@@ -19,7 +19,7 @@ export interface Env {
   STRICT_ORIGIN?: string; // "true" = drop suspect traffic; default (lenient) = store + flag
 }
 
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 
 // Minimal referrer classification. The dashboard can re-classify from raw events,
 // so this list only needs to be "good enough" and can grow over time.
@@ -31,7 +31,11 @@ const AI_HOSTS = [
 const SEARCH_HOSTS = ["google.", "bing.com", "duckduckgo.com", "ecosia.org", "search.brave.com", "yahoo.com", "baidu.com", "yandex."];
 const SOCIAL_HOSTS = ["facebook.com", "instagram.com", "t.co", "twitter.com", "x.com", "linkedin.com", "reddit.com", "youtube.com", "news.ycombinator.com", "mastodon", "bsky.app", "pinterest.", "tiktok.com"];
 
-const BOT_UA = /bot|crawl|spider|slurp|headless|preview|monitor|lighthouse|pingdom|gtmetrix/i;
+const BOT_UA = /bot|crawl|spider|slurp|headless|preview|monitor|lighthouse|pingdom|gtmetrix|curl|wget|python-requests|python-urllib|go-http-client|okhttp|java\/|libwww|httpie|postman|insomnia|node-fetch|axios|undici/i;
+const SEARCH_CRAWLER_UA = /googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|sogou/i;
+const AI_CRAWLER_UA = /gptbot|chatgpt|claudebot|anthropic|perplexitybot|bytespider|cohere-ai|meta-externalagent/i;
+const HEADLESS_UA = /headless|phantomjs|selenium|puppeteer|playwright/i;
+const HTTP_CLIENT_UA = /curl|wget|python-requests|python-urllib|go-http-client|okhttp|java\/|libwww|httpie|postman|insomnia|node-fetch|axios|undici/i;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -86,14 +90,16 @@ async function ingest(request: Request, env: Env): Promise<Response> {
     const visitor = await sha256(salt + ev.d + ip + ua);
 
     const refHost = hostnameOf(ev.r);
+    const refPath = pathOf(ev.r);
     const channel = classify(refHost);
+    const clientType = classifyClient(ua);
     const device = deviceClass(ev.w || 0);
     const country = request.headers.get("CF-IPCountry") || null;
     const utm = parseUtm(ev.u);
 
     await env.DB.prepare(
-      `INSERT INTO events (ts, name, domain, path, visitor, ref_host, channel, utm_source, utm_medium, utm_campaign, device, country, flags)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO events (ts, name, domain, path, visitor, ref_host, ref_path, channel, utm_source, utm_medium, utm_campaign, device, country, flags, client_type)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(
       Date.now(),
       (ev.n || "pageview").slice(0, 80),
@@ -101,11 +107,13 @@ async function ingest(request: Request, env: Env): Promise<Response> {
       ev.u.slice(0, 1024),
       visitor,
       refHost,
+      refPath,
       channel,
       utm.source, utm.medium, utm.campaign,
       device,
       country,
-      flagStr
+      flagStr,
+      clientType
     ).run();
   } catch (e) {
     /* swallow — never surface ingest errors to visitors */
@@ -120,46 +128,60 @@ async function readStats(request: Request, env: Env, url: URL): Promise<Response
   if (auth) return auth;
 
   const { from, to, fromTs, toTs } = dateRange(url);
-  // Clean reports by default: exclude flagged (likely bot/spam) traffic.
-  // Pass ?include_flagged=1 to include it.
   const includeFlagged = url.searchParams.get("include_flagged") === "1";
-  const f = includeFlagged ? "" : " AND flags IS NULL";
+  const channelFilter = url.searchParams.get("channel"); // e.g. "ai", "search"
+  const nameFilter = url.searchParams.get("name") || "pageview"; // default to pageview; "all" = any
+  const clientTypeFilter = url.searchParams.get("client_type"); // e.g. "human"
+  const deviceFilter = url.searchParams.get("device"); // e.g. "desktop"
 
-  const totals = await env.DB.prepare(
-    `SELECT COUNT(*) AS pageviews, COUNT(DISTINCT visitor) AS visitors
-     FROM events WHERE ts >= ? AND ts < ? AND name = 'pageview'` + f
-  ).bind(fromTs, toTs).first<{ pageviews: number; visitors: number }>();
+  // Build dynamic WHERE clause fragments + bind values
+  let f = "";
+  const extras: (string | number)[] = [];
+  if (!includeFlagged) f += " AND flags IS NULL";
+  if (channelFilter) { f += " AND channel = ?"; extras.push(channelFilter); }
+  if (nameFilter !== "all") { f += " AND name = ?"; extras.push(nameFilter); }
+  if (clientTypeFilter) { f += " AND client_type = ?"; extras.push(clientTypeFilter); }
+  if (deviceFilter) { f += " AND device = ?"; extras.push(deviceFilter); }
 
-  const timeseries = (await env.DB.prepare(
-    `SELECT date(ts/1000, 'unixepoch') AS day, COUNT(*) AS pageviews, COUNT(DISTINCT visitor) AS visitors
-     FROM events WHERE ts >= ? AND ts < ? AND name = 'pageview'` + f + `
-     GROUP BY day ORDER BY day`
+  // Helper: run a query with the base time params + dynamic extras.
+  const q = (sql: string, extraBinds: (string | number)[] = []) =>
+    env.DB.prepare(sql).bind(fromTs, toTs, ...extras, ...extraBinds);
+
+  const base = `FROM events WHERE ts >= ? AND ts < ?` + f;
+
+  const totals = await q(`SELECT COUNT(*) AS pageviews, COUNT(DISTINCT visitor) AS visitors ${base}`)
+    .first<{ pageviews: number; visitors: number }>();
+
+  const timeseries = (await q(
+    `SELECT date(ts/1000, 'unixepoch') AS day, COUNT(*) AS pageviews, COUNT(DISTINCT visitor) AS visitors ${base} GROUP BY day ORDER BY day`
+  ).all()).results;
+
+  const pages = (await q(
+    `SELECT path, COUNT(*) AS pageviews, COUNT(DISTINCT visitor) AS visitors ${base} GROUP BY path ORDER BY pageviews DESC LIMIT 100`
+  ).all()).results;
+
+  const referrers = (await q(
+    `SELECT ref_host, ref_path, COUNT(DISTINCT visitor) AS visitors ${base} AND ref_host IS NOT NULL GROUP BY ref_host, ref_path ORDER BY visitors DESC LIMIT 100`
+  ).all()).results;
+
+  const channels = (await q(
+    `SELECT channel, COUNT(DISTINCT visitor) AS visitors ${base} GROUP BY channel ORDER BY visitors DESC`
+  ).all()).results;
+
+  const devices = (await q(
+    `SELECT device, COUNT(DISTINCT visitor) AS visitors ${base} GROUP BY device ORDER BY visitors DESC`
+  ).all()).results;
+
+  const clientTypes = (await q(
+    `SELECT client_type, COUNT(DISTINCT visitor) AS visitors ${base} GROUP BY client_type ORDER BY visitors DESC`
+  ).all()).results;
+
+  // 404s — events with name='404', counted separately regardless of the name filter.
+  const notFoundBase = `FROM events WHERE ts >= ? AND ts < ?` + (includeFlagged ? "" : " AND flags IS NULL") + ` AND name = '404'`;
+  const notFound = (await env.DB.prepare(
+    `SELECT path, ref_host, ref_path, COUNT(*) AS count ${notFoundBase} GROUP BY path, ref_host, ref_path ORDER BY count DESC LIMIT 100`
   ).bind(fromTs, toTs).all()).results;
 
-  const pages = (await env.DB.prepare(
-    `SELECT path, COUNT(*) AS pageviews, COUNT(DISTINCT visitor) AS visitors
-     FROM events WHERE ts >= ? AND ts < ? AND name = 'pageview'` + f + `
-     GROUP BY path ORDER BY pageviews DESC LIMIT 100`
-  ).bind(fromTs, toTs).all()).results;
-
-  const referrers = (await env.DB.prepare(
-    `SELECT ref_host, COUNT(DISTINCT visitor) AS visitors
-     FROM events WHERE ts >= ? AND ts < ? AND ref_host IS NOT NULL` + f + `
-     GROUP BY ref_host ORDER BY visitors DESC LIMIT 100`
-  ).bind(fromTs, toTs).all()).results;
-
-  const channels = (await env.DB.prepare(
-    `SELECT channel, COUNT(DISTINCT visitor) AS visitors
-     FROM events WHERE ts >= ? AND ts < ?` + f + ` GROUP BY channel ORDER BY visitors DESC`
-  ).bind(fromTs, toTs).all()).results;
-
-  const devices = (await env.DB.prepare(
-    `SELECT device, COUNT(DISTINCT visitor) AS visitors
-     FROM events WHERE ts >= ? AND ts < ?` + f + ` GROUP BY device ORDER BY visitors DESC`
-  ).bind(fromTs, toTs).all()).results;
-
-  // What was filtered out — so the dashboard can show "N flagged" and let the
-  // user inspect/include it.
   const flaggedTotal = await env.DB.prepare(
     `SELECT COUNT(*) AS n FROM events WHERE ts >= ? AND ts < ? AND flags IS NOT NULL`
   ).bind(fromTs, toTs).first<{ n: number }>();
@@ -172,7 +194,7 @@ async function readStats(request: Request, env: Env, url: URL): Promise<Response
   return json({
     range: { from, to },
     totals: totals ?? { pageviews: 0, visitors: 0 },
-    timeseries, pages, referrers, channels, devices,
+    timeseries, pages, referrers, channels, devices, clientTypes, notFound,
     flagged: { total: flaggedTotal?.n ?? 0, reasons: flaggedReasons, excluded: !includeFlagged }
   });
 }
@@ -181,12 +203,18 @@ async function readRaw(request: Request, env: Env, url: URL): Promise<Response> 
   const auth = requireToken(request, env);
   if (auth) return auth;
 
+  const { fromTs, toTs } = dateRange(url);
   const since = Math.max(0, parseInt(url.searchParams.get("since") || "0", 10) || 0);
   const limit = Math.min(1000, Math.max(1, parseInt(url.searchParams.get("limit") || "500", 10) || 500));
+  const includeFlagged = url.searchParams.get("include_flagged") === "1";
+
+  let where = `ts >= ? AND ts < ? AND id > ?`;
+  const binds: (string | number)[] = [fromTs, toTs, since];
+  if (!includeFlagged) where += " AND flags IS NULL";
 
   const rows = (await env.DB.prepare(
-    `SELECT * FROM events WHERE id > ? ORDER BY id ASC LIMIT ?`
-  ).bind(since, limit).all()).results as Array<{ id: number }>;
+    `SELECT * FROM events WHERE ${where} ORDER BY id ASC LIMIT ?`
+  ).bind(...binds, limit).all()).results as Array<{ id: number }>;
 
   const next = rows.length === limit ? rows[rows.length - 1].id : null;
   return json({ events: rows, next });
@@ -232,6 +260,19 @@ async function sha256(input: string): Promise<string> {
 function hostnameOf(ref?: string | null): string | null {
   if (!ref) return null;
   try { return new URL(ref).hostname.replace(/^www\./, ""); } catch { return null; }
+}
+
+function pathOf(ref?: string | null): string | null {
+  if (!ref) return null;
+  try { return new URL(ref).pathname; } catch { return null; }
+}
+
+function classifyClient(ua: string): string {
+  if (AI_CRAWLER_UA.test(ua)) return "ai_crawler";
+  if (SEARCH_CRAWLER_UA.test(ua)) return "search_crawler";
+  if (HTTP_CLIENT_UA.test(ua)) return "http_client";
+  if (HEADLESS_UA.test(ua)) return "headless";
+  return "human";
 }
 
 function classify(refHost: string | null): string {
@@ -282,7 +323,10 @@ function json(obj: unknown, status = 200): Response {
 // The Worker serves the snippet inline so there is exactly one thing to deploy.
 // Keep this in sync with /snippet/a.js.
 function serveSnippet(): Response {
-  const js = `(function(){var s=document.currentScript;var host=(s&&s.getAttribute("data-host"))||"";function send(n){try{var b=JSON.stringify({n:n,d:location.hostname,u:location.pathname+location.search,r:document.referrer||null,w:window.innerWidth||0});var u=host+"/event";if(navigator.sendBeacon){navigator.sendBeacon(u,new Blob([b],{type:"text/plain"}))}else{fetch(u,{method:"POST",body:b,keepalive:true,headers:{"Content-Type":"text/plain"}})}}catch(e){}}send("pageview");var p=history.pushState;history.pushState=function(){p.apply(this,arguments);send("pageview")};window.addEventListener("popstate",function(){send("pageview")});window.sa=function(t,n){if(t==="event"&&n)send(n)}})();`;
+  // data-event overrides the default event name ("pageview"). Set data-event="404" on the
+  // 404 page so those hits are tagged and filterable in the dashboard.
+  // Auto-detects 404 pages from document.title. Explicit overrides: window.__tc_event or data-event.
+  const js = `(function(){var s=document.currentScript;var host=(s&&s.getAttribute("data-host"))||"";var is404=/\\b404\\b|not found/i.test(document.title||"");var dn=window.__tc_event||(s&&s.getAttribute("data-event"))||(is404?"404":"pageview");function send(n){try{var b=JSON.stringify({n:n,d:location.hostname,u:location.pathname+location.search,r:document.referrer||null,w:window.innerWidth||0});var u=host+"/event";if(navigator.sendBeacon){navigator.sendBeacon(u,new Blob([b],{type:"text/plain"}))}else{fetch(u,{method:"POST",body:b,keepalive:true,headers:{"Content-Type":"text/plain"}})}}catch(e){}}send(dn);var p=history.pushState;history.pushState=function(){p.apply(this,arguments);send("pageview")};window.addEventListener("popstate",function(){send("pageview")});window.sa=function(t,n){if(t==="event"&&n)send(n)}})();`;
   return new Response(js, {
     headers: {
       "Content-Type": "text/javascript; charset=utf-8",
