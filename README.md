@@ -20,9 +20,13 @@ token-authenticated API.
 
 Pageviews, unique visitors, referrers with **referring pages**, an **AI-assistant
 channel** (ChatGPT, Claude, Perplexity, Gemini…), UTM campaigns, device class,
-**client type** (human / bot / crawler — classified without storing the raw
-User-Agent), **automatic 404 detection** (broken-link visibility), and custom
-events (`window.sa('event', 'signup')`). See [PROTOCOL.md](PROTOCOL.md).
+**country** (automatic on Cloudflare), **client type** (human / bot / crawler —
+classified without storing the raw User-Agent), **automatic 404 detection**
+(broken-link visibility), **outbound link clicks** (automatic), **element click tracking** via `data-track`
+attributes (e.g. `<button data-track="signup">` — no JS needed), and **consecutive
+pageview deduplication** (form-submit reloads don't double-count). A JS API
+(`window.sa('event', 'name')`) is also available for programmatic tracking.
+See [PROTOCOL.md](PROTOCOL.md).
 
 ## Updating your collector
 
@@ -127,14 +131,14 @@ Bearer token, e.g.:
 curl -H "Authorization: Bearer <READ_TOKEN>" "https://yoursite.com/_a/stats?from=2026-05-01&to=2026-05-30"
 ```
 
-The companion **Tiong Creative analytics dashboard** (a macOS app, sold
+The companion **Website Insights** dashboard (a macOS app by Tiong Creative, sold
 separately) is the polished way to view one or many sites at once.
 
 ## Status
 
-**v2** (protocol version 2). The **Cloudflare variant is deployed and verified
-end-to-end** — one-click deploy, auto-provisioned D1, automatic migrations,
-cookieless ingest, AI-channel classification, client-type classification, auto-404
-detection, referring-page capture, token-auth read API with cross-filters, and
-Origin-based spam flagging. The **PHP variant** implements the same protocol but is
-not yet updated to v2. Not load-tested at scale. MIT licensed.
+**v2** (protocol version 2). Both **Cloudflare and PHP variants** are at v2,
+deployed and verified end-to-end — one-click deploy, auto-provisioned D1, automatic
+migrations, cookieless ingest, AI-channel classification, client-type classification,
+auto-404 detection, outbound + element click tracking, referring-page capture, country
+detection (Cloudflare), pageview deduplication, token-auth read API with cross-filters,
+and Origin-based spam flagging. Not load-tested at scale. MIT licensed.

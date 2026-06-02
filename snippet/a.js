@@ -28,8 +28,15 @@
   var is404 = /^404\b|^(page )?not found/i.test((document.title || "").trim());
   var defaultName = window.__tc_event || (script && script.getAttribute("data-event")) || (is404 ? "404" : "pageview");
   var ownHost = location.hostname;
+  var lastPageview = null;
 
   function send(name, path) {
+    // Deduplicate consecutive identical pageviews (e.g. form submit reloads same page).
+    var u = path || (location.pathname + location.search);
+    if (name === "pageview" || name === "404") {
+      if (u === lastPageview) return;
+      lastPageview = u;
+    }
     try {
       var body = JSON.stringify({
         n: name,

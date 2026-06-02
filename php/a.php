@@ -134,7 +134,15 @@ function read_stats() {
     $extras = [];
     if (!$includeFlagged) $f .= ' AND flags IS NULL';
     if ($channelFilter) { $f .= ' AND channel = ?'; $extras[] = $channelFilter; }
-    if ($nameFilter !== 'all') { $f .= ' AND name = ?'; $extras[] = $nameFilter; }
+    if ($nameFilter !== 'all') {
+        if (strpos($nameFilter, ',') !== false) {
+            $names = array_filter(array_map('trim', explode(',', $nameFilter)));
+            $f .= ' AND name IN (' . implode(',', array_fill(0, count($names), '?')) . ')';
+            $extras = array_merge($extras, $names);
+        } else {
+            $f .= ' AND name = ?'; $extras[] = $nameFilter;
+        }
+    }
     if ($clientTypeFilter) { $f .= ' AND client_type = ?'; $extras[] = $clientTypeFilter; }
     if ($deviceFilter) { $f .= ' AND device = ?'; $extras[] = $deviceFilter; }
 
@@ -275,6 +283,6 @@ function send_json($obj, $status = 200) {
 function serve_snippet() {
     header('Content-Type: text/javascript; charset=utf-8');
     header('Cache-Control: public, max-age=86400');
-    echo '(function(){var s=document.currentScript;var host=(s&&s.getAttribute("data-host"))||"";var is404=/^404\b|^(page )?not found/i.test((document.title||"").trim());var dn=window.__tc_event||(s&&s.getAttribute("data-event"))||(is404?"404":"pageview");var oh=location.hostname;function send(n,p){try{var b=JSON.stringify({n:n,d:oh,u:p||(location.pathname+location.search),r:document.referrer||null,w:window.innerWidth||0});var u=host+"/event";if(navigator.sendBeacon){navigator.sendBeacon(u,new Blob([b],{type:"text/plain"}))}else{fetch(u,{method:"POST",body:b,keepalive:true,headers:{"Content-Type":"text/plain"}})}}catch(e){}}send(dn);var ps=history.pushState;history.pushState=function(){ps.apply(this,arguments);send("pageview")};window.addEventListener("popstate",function(){send("pageview")});document.addEventListener("click",function(e){var el=e.target;while(el&&el!==document){var t=el.getAttribute&&el.getAttribute("data-track");if(t){send(t);return}if(el.tagName==="A"&&el.href){try{var lh=new URL(el.href).hostname;if(lh&&lh!==oh)send("outbound",el.href)}catch(x){}return}el=el.parentElement}});window.sa=function(t,n){if(t==="event"&&n)send(n)}})();';
+    echo '(function(){var s=document.currentScript;var host=(s&&s.getAttribute("data-host"))||"";var is404=/^404\b|^(page )?not found/i.test((document.title||"").trim());var dn=window.__tc_event||(s&&s.getAttribute("data-event"))||(is404?"404":"pageview");var oh=location.hostname;var lp=null;function send(n,p){var u=p||(location.pathname+location.search);if((n==="pageview"||n==="404")&&u===lp)return;if(n==="pageview"||n==="404")lp=u;try{var b=JSON.stringify({n:n,d:oh,u:u,r:document.referrer||null,w:window.innerWidth||0});var ep=host+"/event";if(navigator.sendBeacon){navigator.sendBeacon(ep,new Blob([b],{type:"text/plain"}))}else{fetch(ep,{method:"POST",body:b,keepalive:true,headers:{"Content-Type":"text/plain"}})}}catch(e){}}send(dn);var ps=history.pushState;history.pushState=function(){ps.apply(this,arguments);send("pageview")};window.addEventListener("popstate",function(){send("pageview")});document.addEventListener("click",function(e){var el=e.target;while(el&&el!==document){var t=el.getAttribute&&el.getAttribute("data-track");if(t){send(t);return}if(el.tagName==="A"&&el.href){try{var lh=new URL(el.href).hostname;if(lh&&lh!==oh)send("outbound",el.href)}catch(x){}return}el=el.parentElement}});window.sa=function(t,n){if(t==="event"&&n)send(n)}})();';
     exit;
 }
