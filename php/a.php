@@ -89,9 +89,10 @@ function ingest() {
         if (STRICT_ORIGIN && $flags) return;
         $flagStr = $flags ? implode(',', $flags) : null;
 
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+        $lang = $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? '';
         $salt = daily_salt();
-        $visitor = hash('sha256', $salt . $ev['d'] . $ip . $ua);
+        $visitor = hash('sha256', $salt . $ev['d'] . $ip . $ua . $lang);
         $refHost = hostname_of($ev['r'] ?? null);
         $refPath = path_of($ev['r'] ?? null);
         $clientType = classify_client($ua);
@@ -222,13 +223,18 @@ function path_of($ref) {
     return parse_url($ref, PHP_URL_PATH) ?: null;
 }
 
+function host_matches($host, $pattern) {
+    if (substr($pattern, -1) === '.') return strpos($host, $pattern) === 0 || strpos($host, '.' . $pattern) !== false;
+    return $host === $pattern || substr($host, -(strlen($pattern) + 1)) === '.' . $pattern;
+}
+
 function classify($h) {
     global $AI_HOSTS, $SEARCH_HOSTS, $SOCIAL_HOSTS;
     if (!$h) return 'direct';
     $h = strtolower($h);
-    foreach ($AI_HOSTS as $x) if (strpos($h, $x) !== false) return 'ai';
-    foreach ($SEARCH_HOSTS as $x) if (strpos($h, $x) !== false) return 'search';
-    foreach ($SOCIAL_HOSTS as $x) if (strpos($h, $x) !== false) return 'social';
+    foreach ($AI_HOSTS as $x) if (host_matches($h, $x)) return 'ai';
+    foreach ($SEARCH_HOSTS as $x) if (host_matches($h, $x)) return 'search';
+    foreach ($SOCIAL_HOSTS as $x) if (host_matches($h, $x)) return 'social';
     return 'referral';
 }
 

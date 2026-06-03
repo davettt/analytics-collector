@@ -132,7 +132,7 @@ redeploy.
 Each collector computes, per event:
 
 ```
-visitor = SHA256( daily_salt + domain + client_ip + user_agent )
+visitor = SHA256( daily_salt + domain + client_ip + user_agent + accept_language )
 ```
 
 `daily_salt` is random, rotated every 24h, and only today's + yesterday's salts are

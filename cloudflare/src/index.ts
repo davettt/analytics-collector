@@ -89,8 +89,9 @@ async function ingest(request: Request, env: Env): Promise<Response> {
     const flagStr = flags.length ? flags.join(",") : null;
 
     const ip = request.headers.get("CF-Connecting-IP") || "";
+    const lang = request.headers.get("Accept-Language") || "";
     const salt = await getDailySalt(env);
-    const visitor = await sha256(salt + ev.d + ip + ua);
+    const visitor = await sha256(salt + ev.d + ip + ua + lang);
 
     const refHost = hostnameOf(ev.r);
     const refPath = pathOf(ev.r);
@@ -291,12 +292,19 @@ function classifyClient(ua: string): string {
   return "human";
 }
 
+function hostMatches(host: string, pattern: string): boolean {
+  // "t.co" should match "t.co" but NOT "producthunt.com".
+  // Pattern ending with "." is a prefix match (e.g. "google." matches "google.com").
+  if (pattern.endsWith(".")) return host.startsWith(pattern) || host.includes("." + pattern);
+  return host === pattern || host.endsWith("." + pattern);
+}
+
 function classify(refHost: string | null): string {
   if (!refHost) return "direct";
   const h = refHost.toLowerCase();
-  if (AI_HOSTS.some((x) => h.includes(x))) return "ai";
-  if (SEARCH_HOSTS.some((x) => h.includes(x))) return "search";
-  if (SOCIAL_HOSTS.some((x) => h.includes(x))) return "social";
+  if (AI_HOSTS.some((x) => hostMatches(h, x))) return "ai";
+  if (SEARCH_HOSTS.some((x) => hostMatches(h, x))) return "search";
+  if (SOCIAL_HOSTS.some((x) => hostMatches(h, x))) return "social";
   return "referral";
 }
 
