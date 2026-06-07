@@ -21,7 +21,7 @@ const PROTOCOL_VERSION = 2;
 
 $AI_HOSTS     = ['chatgpt.com','chat.openai.com','claude.ai','perplexity.ai','gemini.google.com','copilot.microsoft.com','deepseek.com','grok.com','x.ai','you.com','poe.com'];
 $SEARCH_HOSTS = ['google.','bing.com','duckduckgo.com','ecosia.org','search.brave.com','yahoo.com','baidu.com','yandex.'];
-$SOCIAL_HOSTS = ['facebook.com','instagram.com','t.co','twitter.com','x.com','linkedin.com','reddit.com','youtube.com','news.ycombinator.com','mastodon','bsky.app','pinterest.','tiktok.com'];
+$SOCIAL_HOSTS = ['facebook.com','instagram.com','t.co','twitter.com','x.com','linkedin.com','reddit.com','youtube.com','news.ycombinator.com','mastodon.','bsky.app','pinterest.','tiktok.com'];
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
 $ep = isset($_GET['e']) ? $_GET['e'] : route_suffix($path);
@@ -71,7 +71,9 @@ function ingest() {
     try {
         $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
-        $ev = json_decode(file_get_contents('php://input'), true);
+        $raw = file_get_contents('php://input');
+        if (strlen($raw) > 2048) return;
+        $ev = json_decode($raw, true);
         if (!$ev || empty($ev['d']) || !isset($ev['u'])) return;
         $evDomain = preg_replace('/^www\./', '', $ev['d']);
         $siteDomain = preg_replace('/^www\./', '', SITE_DOMAIN);
@@ -164,6 +166,7 @@ function read_stats() {
         'channels' => q($pdo, "SELECT channel, COUNT(DISTINCT visitor) visitors $base GROUP BY channel ORDER BY visitors DESC", $baseParams),
         'devices' => q($pdo, "SELECT device, COUNT(DISTINCT visitor) visitors $base GROUP BY device ORDER BY visitors DESC", $baseParams),
         'clientTypes' => q($pdo, "SELECT client_type, COUNT(DISTINCT visitor) visitors $base GROUP BY client_type ORDER BY visitors DESC", $baseParams),
+        'countries' => q($pdo, "SELECT country, COUNT(DISTINCT visitor) visitors $base AND country IS NOT NULL GROUP BY country ORDER BY visitors DESC LIMIT 50", $baseParams),
         'notFound' => q($pdo, "SELECT path, ref_host, ref_path, COUNT(*) count $notFoundBase GROUP BY path, ref_host, ref_path ORDER BY count DESC LIMIT 100", [$fromTs, $toTs]),
         'flagged' => [
             'total' => (int)($flaggedTotal['n'] ?? 0),

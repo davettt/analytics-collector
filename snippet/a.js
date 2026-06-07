@@ -1,5 +1,5 @@
 /*!
- * analytics-collector tracking snippet (v2.1)
+ * analytics-collector tracking snippet (v2.2)
  * Cookieless. ~1.5KB. Sends pageviews, outbound clicks, tracked element clicks,
  * and custom events to a same-origin collector.
  *

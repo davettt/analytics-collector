@@ -25,11 +25,11 @@ const PROTOCOL_VERSION = 2;
 // so this list only needs to be "good enough" and can grow over time.
 const AI_HOSTS = [
   "chatgpt.com", "chat.openai.com", "claude.ai", "perplexity.ai",
-  "gemini.google.com", "copilot.microsoft.com", "bing.com/chat",
+  "gemini.google.com", "copilot.microsoft.com",
   "deepseek.com", "grok.com", "x.ai", "you.com", "poe.com"
 ];
 const SEARCH_HOSTS = ["google.", "bing.com", "duckduckgo.com", "ecosia.org", "search.brave.com", "yahoo.com", "baidu.com", "yandex."];
-const SOCIAL_HOSTS = ["facebook.com", "instagram.com", "t.co", "twitter.com", "x.com", "linkedin.com", "reddit.com", "youtube.com", "news.ycombinator.com", "mastodon", "bsky.app", "pinterest.", "tiktok.com"];
+const SOCIAL_HOSTS = ["facebook.com", "instagram.com", "t.co", "twitter.com", "x.com", "linkedin.com", "reddit.com", "youtube.com", "news.ycombinator.com", "mastodon.", "bsky.app", "pinterest.", "tiktok.com"];
 
 const BOT_UA = /bot|crawl|spider|slurp|headless|preview|monitor|lighthouse|pingdom|gtmetrix|curl|wget|python-requests|python-urllib|go-http-client|okhttp|java\/|libwww|httpie|postman|insomnia|node-fetch|axios|undici/i;
 const SEARCH_CRAWLER_UA = /googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|sogou/i;
@@ -64,7 +64,9 @@ async function ingest(request: Request, env: Env): Promise<Response> {
     const strict = env.STRICT_ORIGIN === "true";
     const ua = request.headers.get("User-Agent") || "";
 
-    const raw = await request.text();
+    const buf = await request.arrayBuffer();
+    if (buf.byteLength > 2048) return ok;
+    const raw = new TextDecoder().decode(buf);
     const ev = JSON.parse(raw) as { n?: string; d?: string; u?: string; r?: string | null; w?: number };
     if (!ev || !ev.d || !ev.u) return ok; // malformed → always dropped
     const evDomain = ev.d.replace(/^www\./, "");

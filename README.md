@@ -6,7 +6,7 @@ desktop dashboard app reads your stats directly from your collector via a
 token-authenticated API.
 
 - **Cookieless** — no cookies, no localStorage, no persistent IDs. Visitor uniqueness
-  uses a daily-rotating salted hash (`SHA256(daily_salt + domain + IP + UA)`); the IP
+  uses a daily-rotating salted hash (`SHA256(daily_salt + domain + IP + UA + Accept-Language)`); the IP
   and User-Agent are never stored.
 - **Your data, your server** — no central service in the data path.
 - **Two ways to run it**, one shared [wire protocol](PROTOCOL.md):

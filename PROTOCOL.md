@@ -174,6 +174,24 @@ drop**, so the owner can see and decide:
 
 ## Changelog
 
+### v2.2 (2026-06-07)
+- Accept-Language added to visitor hash for better accuracy on shared IPs.
+- Host matching rewritten with domain-boundary checks (`t.co` no longer
+  false-matches `producthunt.com`; `mastodon.` now matches Mastodon instances).
+- Removed non-functional `bing.com/chat` from AI_HOSTS (hostMatches only sees
+  hostnames, not paths).
+- Outbound link click tracking + `data-track` element click tracking in snippet.
+- Consecutive pageview deduplication in snippet (form-submit reloads).
+- Tighter 404 auto-detection (`^404` / `^(page )?not found` — won't false-positive
+  on blog posts about 404s).
+- www normalisation: `SITE_DOMAIN` accepts either `example.com` or
+  `www.example.com` — both work regardless of redirect setup.
+- Comma-separated `name` filter support (`name=pageview,404`).
+- `/stats` returns `countries` breakdown (Cloudflare + PHP).
+- POST body size capped at 2KB.
+- PHP variant checks `CF-Connecting-IP` first for sites behind Cloudflare.
+- Snippet version updated to v2.2.
+
 ### v2 (2026-05-31)
 - Added `ref_path` (full referrer path) for referring-page views.
 - Added `client_type` (human/headless/http_client/search_crawler/ai_crawler), derived
