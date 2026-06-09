@@ -60,7 +60,7 @@ script tag.
 - **Auth**: `Authorization: Bearer <READ_TOKEN>` (read-only token the owner sets).
 - **Query**:
   - `from=YYYY-MM-DD&to=YYYY-MM-DD` (default: last 30 days).
-  - `include_flagged=1` — include suspected bot/spam traffic (default: excluded).
+  - `include_flagged=1` — include flagged traffic (bot UAs, missing/mismatched Origin; default: excluded).
   - `channel=ai` — filter by channel (v2).
   - `client_type=human` — filter by client type (v2).
   - `device=desktop` — filter by device (v2).
@@ -173,6 +173,16 @@ drop**, so the owner can see and decide:
 ---
 
 ## Changelog
+
+### v2.3 (2026-06-09)
+- Owner opt-out via `localStorage._wi_exclude` — site owners can exclude their own
+  traffic by setting a flag in their browser console. No URL parameter, no cookie,
+  browser-only (bots can't set it remotely).
+- Mastodon host matching fixed (`"mastodon."` prefix match).
+- `bing.com/chat` removed from AI_HOSTS (dead code — hostMatches only sees hostnames).
+- POST body size capped at 2KB.
+- PHP `/stats` response includes `countries` field for consistency.
+- Snippet version synced to v2.3.
 
 ### v2.2 (2026-06-07)
 - Accept-Language added to visitor hash for better accuracy on shared IPs.

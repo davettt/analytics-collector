@@ -1,5 +1,5 @@
 /*!
- * analytics-collector tracking snippet (v2.2)
+ * analytics-collector tracking snippet (v2.3)
  * Cookieless. ~1.5KB. Sends pageviews, outbound clicks, tracked element clicks,
  * and custom events to a same-origin collector.
  *
@@ -21,6 +21,11 @@
  * Custom events: window.sa('event', 'signup')
  */
 (function () {
+  // Owner opt-out: skip all tracking if localStorage flag is set.
+  // Set it in your browser console: localStorage.setItem("_wi_exclude", "1")
+  // Remove it: localStorage.removeItem("_wi_exclude")
+  try { if (localStorage.getItem("_wi_exclude")) return; } catch (e) { /* private browsing */ }
+
   var script = document.currentScript;
   var host = (script && script.getAttribute("data-host")) || "";
   // Detect 404 error pages — title starts with "404" or starts with "page not found" / "not found".
