@@ -99,13 +99,13 @@ async function ingest(request: Request, env: Env): Promise<Response> {
     const refPath = pathOf(ev.r);
     const channel = classify(refHost);
     const clientType = classifyClient(ua);
-    const device = deviceClass(ev.w || 0);
+    const device = deviceClass(ua);
     const country = request.headers.get("CF-IPCountry") || null;
     const utm = parseUtm(ev.u);
 
     await env.DB.prepare(
-      `INSERT INTO events (ts, name, domain, path, visitor, ref_host, ref_path, channel, utm_source, utm_medium, utm_campaign, device, country, flags, client_type)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO events (ts, name, domain, path, visitor, ref_host, ref_path, channel, utm_source, utm_medium, utm_campaign, device, country, flags, client_type, viewport)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
     ).bind(
       Date.now(),
       (ev.n || "pageview").slice(0, 80),
@@ -119,7 +119,8 @@ async function ingest(request: Request, env: Env): Promise<Response> {
       device,
       country,
       flagStr,
-      clientType
+      clientType,
+      ev.w || null
     ).run();
   } catch (e) {
     /* swallow — never surface ingest errors to visitors */
@@ -310,9 +311,9 @@ function classify(refHost: string | null): string {
   return "referral";
 }
 
-function deviceClass(w: number): string {
-  if (w > 0 && w < 768) return "mobile";
-  if (w >= 768 && w < 1024) return "tablet";
+function deviceClass(ua: string): string {
+  if (/iPad|Android(?!.*Mobile)|Tablet/i.test(ua)) return "tablet";
+  if (/Mobile|iPhone|iPod|Android.*Mobile|webOS|BlackBerry|Opera Mini|IEMobile/i.test(ua)) return "mobile";
   return "desktop";
 }
 

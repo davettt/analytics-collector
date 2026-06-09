@@ -62,6 +62,7 @@ function db() {
     // Auto-migrate v1 → v2: add columns if missing.
     try { $pdo->exec('ALTER TABLE events ADD COLUMN ref_path TEXT'); } catch (Throwable $e) {}
     try { $pdo->exec("ALTER TABLE events ADD COLUMN client_type TEXT DEFAULT 'human'"); } catch (Throwable $e) {}
+    try { $pdo->exec('ALTER TABLE events ADD COLUMN viewport INTEGER'); } catch (Throwable $e) {}
     return $pdo;
 }
 
@@ -101,8 +102,8 @@ function ingest() {
         $utm = parse_utm($ev['u']);
 
         $stmt = db()->prepare('INSERT INTO events
-            (ts, name, domain, path, visitor, ref_host, ref_path, channel, utm_source, utm_medium, utm_campaign, device, country, client_type, flags)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+            (ts, name, domain, path, visitor, ref_host, ref_path, channel, utm_source, utm_medium, utm_campaign, device, country, client_type, flags, viewport)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
         $stmt->execute([
             (int)(microtime(true) * 1000),
             substr($ev['n'] ?? 'pageview', 0, 80),
@@ -113,10 +114,11 @@ function ingest() {
             $refPath,
             classify($refHost),
             $utm['source'], $utm['medium'], $utm['campaign'],
-            device_class((int)($ev['w'] ?? 0)),
+            device_class($ua),
             null,
             $clientType,
-            $flagStr
+            $flagStr,
+            isset($ev['w']) ? (int)$ev['w'] : null
         ]);
     } catch (Throwable $e) { /* swallow */ }
 }
@@ -249,9 +251,9 @@ function classify_client($ua) {
     return 'human';
 }
 
-function device_class($w) {
-    if ($w > 0 && $w < 768) return 'mobile';
-    if ($w >= 768 && $w < 1024) return 'tablet';
+function device_class($ua) {
+    if (preg_match('/iPad|Android(?!.*Mobile)|Tablet/i', $ua)) return 'tablet';
+    if (preg_match('/Mobile|iPhone|iPod|Android.*Mobile|webOS|BlackBerry|Opera Mini|IEMobile/i', $ua)) return 'mobile';
     return 'desktop';
 }
 
