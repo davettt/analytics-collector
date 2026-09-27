@@ -19,7 +19,8 @@ token-authenticated API.
 ## What it captures
 
 Pageviews, unique visitors, referrers with **referring pages**, an **AI-assistant
-channel** (ChatGPT, Claude, Perplexity, Gemini…), UTM campaigns, device class,
+channel** (ChatGPT, Claude, Perplexity, Gemini… — detected from referrer and also
+from `utm_source`, since some assistants strip the referrer), UTM campaigns, device class,
 **country** (automatic on Cloudflare), **client type** (human / bot / crawler —
 classified without storing the raw User-Agent), **automatic 404 detection**
 (broken-link visibility), **outbound link clicks** (automatic), **element click tracking** via `data-track`
@@ -99,7 +100,21 @@ npx wrangler secret put READ_TOKEN              # set a long random read token
 
 ## Quick start — shared hosting
 
-See [`php/README.md`](php/README.md): upload `a.php` + `.htaccess`, set a token, add the snippet.
+See [`php/README.md`](php/README.md): upload `a.php` + `.htaccess`, set a token, add the snippet. To keep settings across updates, put them in an optional `config.php` beside `a.php` (e.g. `<?php define('READ_TOKEN', '...'); define('SITE_DOMAIN', 'example.com');`) instead of editing `a.php` directly.
+
+## Excluding your own visits
+
+To stop tracking yourself in a browser, run this in the browser console on your site:
+```javascript
+localStorage.setItem("_wi_exclude", "1")
+```
+
+To resume tracking:
+```javascript
+localStorage.removeItem("_wi_exclude")
+```
+
+This is **per-browser, per-domain** (since `www.example.com` and `example.com` are different origins, set it on whichever you browse).
 
 ## Spam & fake traffic
 

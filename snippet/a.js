@@ -1,5 +1,5 @@
 /*!
- * analytics-collector tracking snippet (v2.3)
+ * analytics-collector tracking snippet (v2.4)
  * Cookieless. ~1.5KB. Sends pageviews, outbound clicks, tracked element clicks,
  * and custom events to a same-origin collector.
  *
@@ -34,6 +34,17 @@
   var defaultName = window.__tc_event || (script && script.getAttribute("data-event")) || (is404 ? "404" : "pageview");
   var ownHost = location.hostname;
   var lastPageview = null;
+  // Referrer for the current page. Starts as the real referrer; on SPA route
+  // changes it becomes the previous in-site URL, like a normal page load.
+  var ref = document.referrer || null;
+  var curUrl = location.href;
+
+  function routeChange() {
+    if (location.href === curUrl) return;
+    ref = curUrl;
+    curUrl = location.href;
+    send("pageview");
+  }
 
   function send(name, path) {
     // Deduplicate consecutive identical pageviews (e.g. form submit reloads same page).
@@ -47,7 +58,7 @@
         n: name,
         d: ownHost,
         u: path || (location.pathname + location.search),
-        r: document.referrer || null,
+        r: ref,
         w: window.innerWidth || 0
       });
       var url = host + "/event";
@@ -72,11 +83,9 @@
   var _push = history.pushState;
   history.pushState = function () {
     _push.apply(this, arguments);
-    send("pageview");
+    routeChange();
   };
-  window.addEventListener("popstate", function () {
-    send("pageview");
-  });
+  window.addEventListener("popstate", routeChange);
 
   // Click tracking (delegated to document for efficiency).
   document.addEventListener("click", function (e) {

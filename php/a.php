@@ -4,24 +4,34 @@
  *
  * For traditional shared hosting (cPanel / self-hosted WordPress hosts).
  * Drop this file + the included .htaccess into a folder on your site, e.g. /_a/,
- * set READ_TOKEN below, and add the snippet to your pages. SQLite stores data in
+ * set READ_TOKEN (in config.php — see below), and add the snippet to your pages. SQLite stores data in
  * a flat file next to this script — it does NOT use your MySQL database.
  *
  * Implements the same wire protocol as the Cloudflare variant (see PROTOCOL.md):
  *   POST .../event   GET .../stats   GET .../events   GET .../meta   GET .../a.js
  */
 
-// ----------------------------- CONFIG (edit me) -----------------------------
-const READ_TOKEN = 'CHANGE-ME-to-a-long-random-string'; // dashboard read token
-const SITE_DOMAIN = '';                                  // your hostname; '' = accept any (disables origin checks)
-const STRICT_ORIGIN = false;                             // true = drop suspect traffic; false = store + flag it
-const DB_FILE = __DIR__ . '/analytics.sqlite';           // created automatically
+// ----------------------------- CONFIG ---------------------------------------
+// Recommended: put your settings in a separate config.php next to this file, so
+// updating a.php never overwrites them. config.php contents, e.g.:
+//
+//   <?php
+//   define('READ_TOKEN', 'your-long-random-string');
+//   define('SITE_DOMAIN', 'example.com');
+//
+// Anything config.php doesn't define falls back to the defaults below. (Editing
+// the defaults below still works, but you'll have to redo it after each update.)
+if (is_file(__DIR__ . '/config.php')) require __DIR__ . '/config.php';
+defined('READ_TOKEN')    || define('READ_TOKEN', 'CHANGE-ME-to-a-long-random-string'); // dashboard read token
+defined('SITE_DOMAIN')   || define('SITE_DOMAIN', '');       // your hostname; '' = accept any (disables origin checks)
+defined('STRICT_ORIGIN') || define('STRICT_ORIGIN', false);  // true = drop suspect traffic; false = store + flag it
+defined('DB_FILE')       || define('DB_FILE', __DIR__ . '/analytics.sqlite'); // created automatically
 const PROTOCOL_VERSION = 2;
 // ----------------------------------------------------------------------------
 
-$AI_HOSTS     = ['chatgpt.com','chat.openai.com','claude.ai','perplexity.ai','gemini.google.com','copilot.microsoft.com','deepseek.com','grok.com','x.ai','you.com','poe.com'];
-$SEARCH_HOSTS = ['google.','bing.com','duckduckgo.com','ecosia.org','search.brave.com','yahoo.com','baidu.com','yandex.'];
-$SOCIAL_HOSTS = ['facebook.com','instagram.com','t.co','twitter.com','x.com','linkedin.com','reddit.com','youtube.com','news.ycombinator.com','mastodon.','bsky.app','pinterest.','tiktok.com'];
+$AI_HOSTS     = ['chatgpt.com','chat.openai.com','claude.ai','perplexity.ai','gemini.google.com','copilot.microsoft.com','deepseek.com','grok.com','x.ai','you.com','poe.com','chat.mistral.ai','meta.ai','duck.ai','chat.qwen.ai','kimi.com','phind.com'];
+$SEARCH_HOSTS = ['google.','bing.com','duckduckgo.com','ecosia.org','search.brave.com','yahoo.com','baidu.com','yandex.','kagi.com','startpage.com','qwant.com','naver.com','seznam.cz'];
+$SOCIAL_HOSTS = ['facebook.com','instagram.com','t.co','twitter.com','x.com','linkedin.com','lnkd.in','reddit.com','youtube.com','youtu.be','news.ycombinator.com','mastodon.','bsky.app','pinterest.','tiktok.com','threads.net','threads.com','t.me','discord.com','quora.com','substack.com'];
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
 $ep = isset($_GET['e']) ? $_GET['e'] : route_suffix($path);
@@ -100,6 +110,9 @@ function ingest() {
         $refPath = path_of($ev['r'] ?? null);
         $clientType = classify_client($ua);
         $utm = parse_utm($ev['u']);
+        // Only present when the site is proxied through Cloudflare.
+        $country = isset($_SERVER['HTTP_CF_IPCOUNTRY']) && preg_match('/^[A-Z0-9]{2}$/', $_SERVER['HTTP_CF_IPCOUNTRY']) ? $_SERVER['HTTP_CF_IPCOUNTRY'] : null;
+        $viewport = isset($ev['w']) && is_numeric($ev['w']) && $ev['w'] > 0 ? min((int)round($ev['w']), 100000) : null;
 
         $stmt = db()->prepare('INSERT INTO events
             (ts, name, domain, path, visitor, ref_host, ref_path, channel, utm_source, utm_medium, utm_campaign, device, country, client_type, flags, viewport)
@@ -112,13 +125,13 @@ function ingest() {
             $visitor,
             $refHost,
             $refPath,
-            classify($refHost),
+            classify($refHost, $utm['source']),
             $utm['source'], $utm['medium'], $utm['campaign'],
             device_class($ua),
-            null,
+            $country,
             $clientType,
             $flagStr,
-            isset($ev['w']) ? (int)$ev['w'] : null
+            $viewport
         ]);
     } catch (Throwable $e) { /* swallow */ }
 }
@@ -140,13 +153,10 @@ function read_stats() {
     if (!$includeFlagged) $f .= ' AND flags IS NULL';
     if ($channelFilter) { $f .= ' AND channel = ?'; $extras[] = $channelFilter; }
     if ($nameFilter !== 'all') {
-        if (strpos($nameFilter, ',') !== false) {
-            $names = array_filter(array_map('trim', explode(',', $nameFilter)));
-            $f .= ' AND name IN (' . implode(',', array_fill(0, count($names), '?')) . ')';
-            $extras = array_merge($extras, $names);
-        } else {
-            $f .= ' AND name = ?'; $extras[] = $nameFilter;
-        }
+        $names = array_values(array_filter(array_map('trim', explode(',', (string)$nameFilter)), 'strlen'));
+        if (!$names) $names = ['pageview']; // e.g. "name=," → default, not invalid SQL
+        $f .= ' AND name IN (' . implode(',', array_fill(0, count($names), '?')) . ')';
+        $extras = array_merge($extras, $names);
     }
     if ($clientTypeFilter) { $f .= ' AND client_type = ?'; $extras[] = $clientTypeFilter; }
     if ($deviceFilter) { $f .= ' AND device = ?'; $extras[] = $deviceFilter; }
@@ -233,8 +243,11 @@ function host_matches($host, $pattern) {
     return $host === $pattern || substr($host, -(strlen($pattern) + 1)) === '.' . $pattern;
 }
 
-function classify($h) {
+function classify($h, $utmSource = null) {
     global $AI_HOSTS, $SEARCH_HOSTS, $SOCIAL_HOSTS;
+    // AI assistants often strip the referrer but tag links, e.g. ?utm_source=chatgpt.com.
+    $src = strtolower(trim((string)$utmSource));
+    if ($src !== '') foreach ($AI_HOSTS as $x) if (host_matches($src, $x)) return 'ai';
     if (!$h) return 'direct';
     $h = strtolower($h);
     foreach ($AI_HOSTS as $x) if (host_matches($h, $x)) return 'ai';
@@ -244,8 +257,8 @@ function classify($h) {
 }
 
 function classify_client($ua) {
-    if (preg_match('/gptbot|chatgpt|claudebot|anthropic|perplexitybot|bytespider|cohere-ai|meta-externalagent/i', $ua)) return 'ai_crawler';
-    if (preg_match('/googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|sogou/i', $ua)) return 'search_crawler';
+    if (preg_match('/gptbot|chatgpt|oai-searchbot|claudebot|claude-|anthropic|perplexitybot|perplexity-user|bytespider|cohere-ai|meta-externalagent|meta-externalfetcher|amazonbot|ccbot|duckassistbot|mistralai-user/i', $ua)) return 'ai_crawler';
+    if (preg_match('/googlebot|bingbot|yandexbot|baiduspider|duckduckbot|slurp|sogou|applebot|petalbot|seznambot|yeti/i', $ua)) return 'search_crawler';
     if (preg_match('/curl|wget|python-requests|python-urllib|go-http-client|okhttp|java\/|libwww|httpie|postman|insomnia|node-fetch|axios|undici/i', $ua)) return 'http_client';
     if (preg_match('/headless|phantomjs|selenium|puppeteer|playwright/i', $ua)) return 'headless';
     return 'human';
@@ -294,6 +307,6 @@ function send_json($obj, $status = 200) {
 function serve_snippet() {
     header('Content-Type: text/javascript; charset=utf-8');
     header('Cache-Control: public, max-age=86400');
-    echo '(function(){try{if(localStorage.getItem("_wi_exclude"))return}catch(x){}var s=document.currentScript;var host=(s&&s.getAttribute("data-host"))||"";var is404=/^404\b|^(page )?not found/i.test((document.title||"").trim());var dn=window.__tc_event||(s&&s.getAttribute("data-event"))||(is404?"404":"pageview");var oh=location.hostname;var lp=null;function send(n,p){var u=p||(location.pathname+location.search);if((n==="pageview"||n==="404")&&u===lp)return;if(n==="pageview"||n==="404")lp=u;try{var b=JSON.stringify({n:n,d:oh,u:u,r:document.referrer||null,w:window.innerWidth||0});var ep=host+"/event";if(navigator.sendBeacon){navigator.sendBeacon(ep,new Blob([b],{type:"text/plain"}))}else{fetch(ep,{method:"POST",body:b,keepalive:true,headers:{"Content-Type":"text/plain"}})}}catch(e){}}send(dn);var ps=history.pushState;history.pushState=function(){ps.apply(this,arguments);send("pageview")};window.addEventListener("popstate",function(){send("pageview")});document.addEventListener("click",function(e){var el=e.target;while(el&&el!==document){var t=el.getAttribute&&el.getAttribute("data-track");if(t){send(t);return}if(el.tagName==="A"&&el.href){try{var lh=new URL(el.href).hostname;if(lh&&lh!==oh)send("outbound",el.href)}catch(x){}return}el=el.parentElement}});window.sa=function(t,n){if(t==="event"&&n)send(n)}})();';
+    echo '(function(){try{if(localStorage.getItem("_wi_exclude"))return}catch(x){}var s=document.currentScript;var host=(s&&s.getAttribute("data-host"))||"";var is404=/^404\b|^(page )?not found/i.test((document.title||"").trim());var dn=window.__tc_event||(s&&s.getAttribute("data-event"))||(is404?"404":"pageview");var oh=location.hostname;var lp=null;var rf=document.referrer||null;var cu=location.href;function rc(){if(location.href===cu)return;rf=cu;cu=location.href;send("pageview")}function send(n,p){var u=p||(location.pathname+location.search);if((n==="pageview"||n==="404")&&u===lp)return;if(n==="pageview"||n==="404")lp=u;try{var b=JSON.stringify({n:n,d:oh,u:u,r:rf,w:window.innerWidth||0});var ep=host+"/event";if(navigator.sendBeacon){navigator.sendBeacon(ep,new Blob([b],{type:"text/plain"}))}else{fetch(ep,{method:"POST",body:b,keepalive:true,headers:{"Content-Type":"text/plain"}})}}catch(e){}}send(dn);var ps=history.pushState;history.pushState=function(){ps.apply(this,arguments);rc()};window.addEventListener("popstate",rc);document.addEventListener("click",function(e){var el=e.target;while(el&&el!==document){var t=el.getAttribute&&el.getAttribute("data-track");if(t){send(t);return}if(el.tagName==="A"&&el.href){try{var lh=new URL(el.href).hostname;if(lh&&lh!==oh)send("outbound",el.href)}catch(x){}return}el=el.parentElement}});window.sa=function(t,n){if(t==="event"&&n)send(n)}})();';
     exit;
 }

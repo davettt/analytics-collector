@@ -11,7 +11,7 @@
   RewriteRule ^(event|stats|events|meta|a\.js)$ a.php [QSA,L]
 </IfModule>
 
-# Never serve the SQLite data file over HTTP.
-<FilesMatch "\.sqlite($|-wal$|-shm$)">
+# Never serve the SQLite data file or your config over HTTP.
+<FilesMatch "(\.sqlite($|-wal$|-shm$)|^config\.php$)">
   Require all denied
 </FilesMatch>

@@ -43,6 +43,13 @@ Your Cloudflare Worker **auto-deploys** on every commit. The deploy step runs an
 new database migrations automatically (e.g. adding new columns), so your existing
 data is preserved and the schema is updated.
 
+### Optional: compatibility date
+
+`wrangler.jsonc` stays yours, so updates don't change its `compatibility_date`. The
+collector works with older dates; if you'd like to match the current source, edit
+it on GitHub to the value in the latest `cloudflare/wrangler.jsonc` (currently
+`2026-09-01`).
+
 ### What stays the same across updates
 
 - **Your tracking snippet** — you don't need to change anything on your website. The
@@ -91,9 +98,10 @@ Open the **`php/`** folder from the download. Upload the new `a.php` to the same
 location on your hosting (e.g. `/_a/a.php`), replacing the old file. Also replace
 `.htaccess` if it changed.
 
-> **Important:** your `READ_TOKEN` and `SITE_DOMAIN` are set at the top of `a.php`.
-> After uploading the new file, **re-enter your token and domain** in the config
-> section at the top — the new file ships with placeholder values.
+> **Your settings:** if they live in `config.php` (next to `a.php`), they're untouched
+> by the update — nothing else to do. If you set them at the top of the old `a.php`,
+> re-enter them after uploading, or better, move them into a `config.php` once so you
+> never have to again (see `php/README.md`).
 
 ### 3. Database update
 

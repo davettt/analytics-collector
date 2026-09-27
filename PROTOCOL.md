@@ -21,8 +21,8 @@ Called by the tracking snippet on every pageview / custom event.
   "n": "pageview",                 // event name: "pageview", "404", or a custom string
   "d": "example.com",              // document hostname
   "u": "/blog/post?utm_source=x",  // path + query
-  "r": "https://chatgpt.com/",     // referrer (or null)
-  "w": 1280                        // viewport width (for device class)
+  "r": "https://chatgpt.com/",     // referrer (or null). On SPA route changes: the previous in-site URL
+  "w": 1280                        // viewport width in CSS px (0/missing/non-numeric → stored as null)
 }
 ```
 
@@ -46,11 +46,12 @@ script tag.
 | `visitor` | Daily-rotating cookieless hash (see below) |
 | `ref_host` | Referrer hostname (null if direct) |
 | `ref_path` | Referrer path (v2 — for "referring pages" views) |
-| `channel` | `ai` / `search` / `social` / `referral` / `direct` |
+| `channel` | `ai` / `search` / `social` / `referral` / `direct`. `ai` also when `utm_source` matches an AI host (e.g. `chatgpt.com`), even with no referrer |
 | `client_type` | `human` / `headless` / `http_client` / `search_crawler` / `ai_crawler` (v2 — derived from UA at ingest, UA itself not stored) |
 | `utm_source`, `utm_medium`, `utm_campaign` | Parsed from the page URL |
 | `device` | `mobile` / `tablet` / `desktop` |
-| `country` | From Cloudflare `CF-IPCountry` header (null on PHP) |
+| `country` | From Cloudflare `CF-IPCountry` header (PHP: only when the site is proxied through Cloudflare, else null) |
+| `viewport` | Viewport width in CSS px, or null |
 | `flags` | Null if clean; else comma-joined reasons (`bot`, `no_origin`, `origin_mismatch`) |
 
 ---
@@ -173,6 +174,15 @@ drop**, so the owner can see and decide:
 ---
 
 ## Changelog
+
+### v2.4 (2026-09-27) — no wire-format change
+- `channel` = `ai` when `utm_source` matches an AI host (assistants often strip the
+  referrer but tag links, e.g. `?utm_source=chatgpt.com`).
+- Expanded AI / search / social host lists and AI / search crawler UA patterns.
+- Snippet v2.4: SPA route changes send the previous in-site URL as `r`.
+- `viewport` stored as null for 0 / missing / non-numeric `w` (both variants).
+- PHP records `country` from `CF-IPCountry` when proxied through Cloudflare.
+- `name=,` (empty list) falls back to the default `pageview` instead of erroring.
 
 ### v2.3 (2026-06-09)
 - Owner opt-out via `localStorage._wi_exclude` — site owners can exclude their own

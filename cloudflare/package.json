@@ -10,8 +10,8 @@
     "deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250501.0",
-    "typescript": "^5.6.0",
-    "wrangler": "^4.40.0"
+    "@cloudflare/workers-types": "^5.20260901.0",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.141.0"
   }
 }

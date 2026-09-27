@@ -1,5 +1,28 @@
 # Changelog
 
+## [2.4.0] - 2026-09-27
+
+### Added
+- PHP: optional `config.php` next to `a.php` for your settings (READ_TOKEN, SITE_DOMAIN, STRICT_ORIGIN, DB_FILE) — updating `a.php` no longer means re-entering them. Editing the defaults inside `a.php` still works.
+- PHP: records visitor country from Cloudflare's `CF-IPCountry` header when the site is proxied through Cloudflare (was always null).
+- AI channel detection from `utm_source` — visits tagged e.g. `?utm_source=chatgpt.com` count as AI even when the assistant strips the referrer.
+
+### Improved
+- AI referrer hosts: chat.mistral.ai, meta.ai, duck.ai, chat.qwen.ai, kimi.com, phind.com
+- Search hosts: kagi.com, startpage.com, qwant.com, naver.com, seznam.cz
+- Social hosts: threads.net, threads.com, lnkd.in, youtu.be, t.me, discord.com, quora.com, substack.com
+- Crawler classification: AI crawlers now include OAI-SearchBot, Claude-User/Claude-SearchBot, Perplexity-User, Meta-ExternalFetcher, Amazonbot, CCBot, DuckAssistBot, MistralAI-User; search crawlers now include Applebot, PetalBot, SeznamBot, Yeti (Naver)
+- Cloudflare `/stats` runs its queries as a single D1 batch (one round trip instead of eleven)
+- Cloudflare: compatibility_date bumped to 2026-09-01; devDependencies bumped (wrangler ^4.141, @cloudflare/workers-types ^5, typescript ^7)
+- Snippet v2.4: single-page-app route changes now send the previous in-site URL as the referrer (like a normal page load) instead of repeating the original external referrer
+
+### Fixed
+- Viewport width stored consistently: missing/zero/non-numeric values are stored as null in both variants (PHP previously stored 0; Worker accepted non-numbers)
+- `/stats?name=,` (empty name list) no longer produces invalid SQL; falls back to the default `pageview`
+
+### Security
+- PHP `.htaccess` also blocks HTTP access to `config.php`; PHP README now documents the nginx rule needed to block `analytics.sqlite` and `config.php` (nginx ignores `.htaccess`, so the database was downloadable on nginx hosts)
+
 ## [2.3.0] - 2026-06-09
 
 ### Added
