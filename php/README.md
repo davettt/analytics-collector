@@ -5,7 +5,8 @@ stored in a flat SQLite file — **it does not touch your MySQL database.**
 
 ## Install (Apache / LiteSpeed)
 
-1. Create a folder on your site, e.g. `/_a/`.
+1. Create a folder on your site, e.g. `/_a/` (any name works — use it in place of
+   `_a` in the steps below).
 2. Upload **`a.php`** and **`.htaccess`** into it.
 3. Create a file named **`config.php`** in the same folder with your settings:
    ```php
@@ -26,6 +27,8 @@ That's it. `analytics.sqlite` is created automatically on the first pageview.
 
 nginx doesn't read `.htaccess`, so **you must block the data file and config
 yourself** — otherwise anyone can download `analytics.sqlite`:
+
+Change `_a` to your folder name if different:
 
 ```nginx
 location ~ ^/_a/(.*\.sqlite(-wal|-shm)?|config\.php)$ { deny all; }

@@ -94,7 +94,8 @@ async function ingest(request: Request, env: Env): Promise<Response> {
     const ip = request.headers.get("CF-Connecting-IP") || "";
     const lang = request.headers.get("Accept-Language") || "";
     const salt = await getDailySalt(env);
-    const visitor = await sha256(salt + ev.d + ip + ua + lang);
+    // Normalised domain, so www.example.com and example.com count as one visitor.
+    const visitor = await sha256(salt + evDomain + ip + ua + lang);
 
     const refHost = hostnameOf(ev.r);
     const refPath = pathOf(ev.r);

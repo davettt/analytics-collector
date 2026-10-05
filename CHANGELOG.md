@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.4.1] - 2026-10-05
+
+### Fixed
+- PHP: `.htaccess` no longer hard-codes `RewriteBase /_a/`, so the collector works from any folder name (previously a folder other than `/_a/` returned 404 for every event). A commented-out `RewriteBase` remains for hosts that reach the folder through an Alias or `~username` URL.
+- Visitor hash now uses the normalised domain (www. stripped) in both variants, so a site reachable on both `www.example.com` and `example.com` no longer counts one person as two visitors. Visitor counts for the day of the update may be slightly high as hashes switch over.
+
+### Docs
+- `PROTOCOL.md`: `/stats` response example now includes the `countries` field.
+- PHP README: notes that any folder name works, and that the nginx block rule's `_a` must match your folder.
+
 ## [2.4.0] - 2026-09-27
 
 ### Added

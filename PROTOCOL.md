@@ -78,6 +78,7 @@ script tag.
   "channels":   [ { "channel": "ai", "visitors": 210 } ],
   "devices":    [ { "device": "desktop", "visitors": 700 } ],
   "clientTypes":[ { "client_type": "human", "visitors": 1200 } ],
+  "countries":  [ { "country": "AU", "visitors": 400 } ],
   "notFound":   [ { "path": "/old-page", "ref_host": "google.com", "ref_path": "/search", "count": 5 } ],
   "flagged":    { "total": 42, "excluded": true,
                   "reasons": [ { "flags": "origin_mismatch", "count": 30 },

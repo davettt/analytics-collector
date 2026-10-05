@@ -105,7 +105,8 @@ function ingest() {
         $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
         $lang = $_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? '';
         $salt = daily_salt();
-        $visitor = hash('sha256', $salt . $ev['d'] . $ip . $ua . $lang);
+        // Normalised domain, so www.example.com and example.com count as one visitor.
+        $visitor = hash('sha256', $salt . $evDomain . $ip . $ua . $lang);
         $refHost = hostname_of($ev['r'] ?? null);
         $refPath = path_of($ev['r'] ?? null);
         $clientType = classify_client($ua);
