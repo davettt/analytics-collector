@@ -100,7 +100,7 @@ async function ingest(request: Request, env: Env): Promise<Response> {
     const refHost = hostnameOf(ev.r);
     const refPath = pathOf(ev.r);
     const utm = parseUtm(ev.u);
-    const channel = classify(refHost, utm.source);
+    const channel = classify(refHost, utm.source, evDomain);
     const clientType = classifyClient(ua);
     const device = deviceClass(ua);
     const country = request.headers.get("CF-IPCountry") || null;
@@ -285,12 +285,15 @@ function hostMatches(host: string, pattern: string): boolean {
   return host === pattern || host.endsWith("." + pattern);
 }
 
-function classify(refHost: string | null, utmSource: string | null = null): string {
+function classify(refHost: string | null, utmSource: string | null = null, ownDomain: string | null = null): string {
   // AI assistants often strip the referrer but tag links, e.g. ?utm_source=chatgpt.com.
   const src = (utmSource || "").toLowerCase().trim();
   if (src && AI_HOSTS.some((x) => hostMatches(src, x))) return "ai";
   if (!refHost) return "direct";
   const h = refHost.toLowerCase();
+  // Page-to-page navigation within the site: the referrer is the site itself, which is not
+  // a traffic source. Both sides are already www-stripped.
+  if (ownDomain && h === ownDomain.toLowerCase()) return "internal";
   if (AI_HOSTS.some((x) => hostMatches(h, x))) return "ai";
   if (SEARCH_HOSTS.some((x) => hostMatches(h, x))) return "search";
   if (SOCIAL_HOSTS.some((x) => hostMatches(h, x))) return "social";

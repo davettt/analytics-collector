@@ -126,7 +126,7 @@ function ingest() {
             $visitor,
             $refHost,
             $refPath,
-            classify($refHost, $utm['source']),
+            classify($refHost, $utm['source'], $evDomain),
             $utm['source'], $utm['medium'], $utm['campaign'],
             device_class($ua),
             $country,
@@ -244,13 +244,16 @@ function host_matches($host, $pattern) {
     return $host === $pattern || substr($host, -(strlen($pattern) + 1)) === '.' . $pattern;
 }
 
-function classify($h, $utmSource = null) {
+function classify($h, $utmSource = null, $ownDomain = null) {
     global $AI_HOSTS, $SEARCH_HOSTS, $SOCIAL_HOSTS;
     // AI assistants often strip the referrer but tag links, e.g. ?utm_source=chatgpt.com.
     $src = strtolower(trim((string)$utmSource));
     if ($src !== '') foreach ($AI_HOSTS as $x) if (host_matches($src, $x)) return 'ai';
     if (!$h) return 'direct';
     $h = strtolower($h);
+    // Page-to-page navigation within the site: the referrer is the site itself, which is not
+    // a traffic source. Both sides are already www-stripped.
+    if ($ownDomain && $h === strtolower($ownDomain)) return 'internal';
     foreach ($AI_HOSTS as $x) if (host_matches($h, $x)) return 'ai';
     foreach ($SEARCH_HOSTS as $x) if (host_matches($h, $x)) return 'search';
     foreach ($SOCIAL_HOSTS as $x) if (host_matches($h, $x)) return 'social';

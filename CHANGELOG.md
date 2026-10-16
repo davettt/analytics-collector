@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.0] - 2026-10-16
+
+### Changed
+- New channel value `internal` for page-to-page navigation within the site (the referrer is the site's own host). These hits were recorded as `referral`, so a visitor who arrived from search and then clicked through the site appeared under both Search and Referral in `/stats` channel counts, and the site itself showed up in its own referrer list. Both variants; events already stored keep `referral`. Dashboards should leave `internal` out of channel breakdowns (Website Insights 0.7.4 does, and counts channels by first touch).
+
+### Docs
+- `PROTOCOL.md`: documents `internal` and why first-touch channels belong in the dashboard.
+
 ## [2.4.1] - 2026-10-05
 
 ### Fixed

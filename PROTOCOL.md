@@ -46,7 +46,7 @@ script tag.
 | `visitor` | Daily-rotating cookieless hash (see below) |
 | `ref_host` | Referrer hostname (null if direct) |
 | `ref_path` | Referrer path (v2 — for "referring pages" views) |
-| `channel` | `ai` / `search` / `social` / `referral` / `direct`. `ai` also when `utm_source` matches an AI host (e.g. `chatgpt.com`), even with no referrer |
+| `channel` | `ai` / `search` / `social` / `referral` / `direct` / `internal`. `ai` also when `utm_source` matches an AI host (e.g. `chatgpt.com`), even with no referrer. `internal` (v2.5) when the referrer is the site's own host: page-to-page navigation, not a traffic source — consumers should leave it out of channel breakdowns (older collectors recorded these as `referral`) |
 | `client_type` | `human` / `headless` / `http_client` / `search_crawler` / `ai_crawler` (v2 — derived from UA at ingest, UA itself not stored) |
 | `utm_source`, `utm_medium`, `utm_campaign` | Parsed from the page URL |
 | `device` | `mobile` / `tablet` / `desktop` |
@@ -86,7 +86,10 @@ script tag.
 }
 ```
 
-`channel` is one of: `ai`, `search`, `social`, `referral`, `direct`.
+`channel` is one of: `ai`, `search`, `social`, `referral`, `direct`, `internal`.
+`internal` is in-site navigation (referrer is the site itself) and is not a traffic
+source; a visitor who arrives from search and then browses appears under both `search`
+and `internal` here, so dashboards should count first-touch channels from `/events`.
 
 `client_type` is one of: `human`, `headless`, `http_client`, `search_crawler`,
 `ai_crawler`.
