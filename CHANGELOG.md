@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Docs
+- README links the companion Website Insights dashboard to its product page and says it is available with the Tiong Creative membership rather than "sold separately".
+- README states the PHP variant needs a patched PHP version (8.5.12, 8.4.27, 8.3.36, 8.2.35 or later) after the 21 October 2026 PHP security release fixing CVE-2026-109618 and CVE-2026-109619. The Cloudflare variant does not use PHP, so these flaws do not affect it.
+
 ## [2.5.0] - 2026-10-16
 
 ### Changed

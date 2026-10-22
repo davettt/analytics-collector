@@ -100,6 +100,8 @@ npx wrangler secret put READ_TOKEN              # set a long random read token
 
 ## Quick start — shared hosting
 
+The PHP variant needs a supported, patched PHP version. On 21 October 2026 PHP fixed two critical remote-code-execution flaws in PHP itself (CVE-2026-109618, CVE-2026-109619), so your host should run PHP 8.5.12, 8.4.27, 8.3.36, 8.2.35 or later; ask your host if unsure. The Cloudflare variant does not use PHP and is unaffected.
+
 See [`php/README.md`](php/README.md): upload `a.php` + `.htaccess`, set a token, add the snippet. To keep settings across updates, put them in an optional `config.php` beside `a.php` (e.g. `<?php define('READ_TOKEN', '...'); define('SITE_DOMAIN', 'example.com');`) instead of editing `a.php` directly.
 
 ## Excluding your own visits
@@ -146,8 +148,9 @@ Bearer token, e.g.:
 curl -H "Authorization: Bearer <READ_TOKEN>" "https://yoursite.com/_a/stats?from=2026-05-01&to=2026-05-30"
 ```
 
-The companion **Website Insights** dashboard (a macOS app by Tiong Creative, sold
-separately) is the polished way to view one or many sites at once.
+The companion [**Website Insights**](https://tiongcreative.com.au/website-insights/)
+dashboard (a macOS app by Tiong Creative, available with its membership) is the polished
+way to view one or many sites at once.
 
 ## Status
 
